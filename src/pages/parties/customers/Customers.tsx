@@ -2,6 +2,20 @@ import { useState } from "react";
 import { DataGrid, type GridColDef, type GridPaginationModel } from "@mui/x-data-grid";
 import PartyPage from "../../PartyPage";
 import AddItemModal from "../../../components/AddItemModel";
+import { useMutation } from "@apollo/client";
+import { CREATE_CUSTOMER } from "../../../graphql/mutations"; 
+
+import {  useEffect } from "react";
+import { useQuery } from "@apollo/client";
+// import { GET_CUSTOMERS } from "../../../graphql/queries/customers";
+import { UPDATE_CUSTOMER } from "../../../graphql/mutations";
+import { DELETE_CUSTOMER } from "../../../graphql/mutations";
+import { GET_CUSTOMERS_PAGINATED } from "../../../graphql/queries/customers";
+// import type { GridSortModel } from '@mui/x-data-grid';
+
+import { type GridFilterModel } from "@mui/x-data-grid";
+
+
 
 type Customer = {
   name: string;
@@ -16,6 +30,15 @@ const Customers = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [searchTerm, setSearchTerm] = useState("");   // 1. Search term state
   const [editingIndex, setEditingIndex] = useState<number | null>(null); // track which customer is editing
+  // Active filter state lifted up for PartyPage filters ("All", "To Collect", "To Pay")
+  const [activeFilter, setActiveFilter] = useState("All");
+
+  // const { data, loading, error } = useQuery(GET_CUSTOMERS);
+  
+  const [createCustomerMutation] = useMutation(CREATE_CUSTOMER);
+const [deleteCustomerMutation] = useMutation(DELETE_CUSTOMER);
+const [updateCustomerMutation] = useMutation(UPDATE_CUSTOMER);
+
 
   // using it for mui pagination 
   const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
@@ -23,38 +46,147 @@ const Customers = () => {
     pageSize: 10,
   });
 
-  // Active filter state lifted up for PartyPage filters ("All", "To Collect", "To Pay")
-  const [activeFilter, setActiveFilter] = useState("All");
+
+const [filterModel, setFilterModel] = useState<GridFilterModel>({
+  items: [],
+});
+
+
+
+// sorting based on columns
+// const [sortModel, setSortModel] = useState<GridSortModel>([]);
+// const handleSortModelChange = (model: GridSortModel) => {
+//   setSortModel(model);
+// };
+
+
+
+// getting paginating customers - server side pagination
+const { data, loading, error, refetch } = useQuery(GET_CUSTOMERS_PAGINATED, {
+  variables: {
+    page: paginationModel.page + 1,
+    limit: paginationModel.pageSize,
+    search: searchTerm || undefined,
+    status: activeFilter !== "All" ? activeFilter : undefined,
+    //   sortBy: sortModel[0]?.field || null,
+    // sortOrder: sortModel[0]?.sort || null
+  },
+});
+
+// mui column wise filtering
+ useEffect(() => {
+  const nameFilter = filterModel.items.find((item) => item.field === "name")?.value;
+  const statusFilter = filterModel.items.find((item) => item.field === "status")?.value;
+  refetch({
+    page: paginationModel.page + 1,
+    limit: paginationModel.pageSize,
+    search: nameFilter || "",
+    status: statusFilter || "",
+  });
+}, [filterModel, paginationModel, refetch]);
+
+
+
+  useEffect(() => {
+    if (data?.customersPaginated?.data) {
+      setCustomers(data.customersPaginated.data);
+    }
+  }, [data]);
+
+
+//filtering based on All, Pending, Received buttons
+  useEffect(() => {
+    refetch({
+      page: paginationModel.page + 1,
+      limit: paginationModel.pageSize,
+      search: searchTerm || undefined,
+      status: activeFilter === "Pending Payments"? "Pending": activeFilter === "Received Payments"? "Received": undefined,
+          });
+}, [searchTerm, activeFilter, paginationModel.page, paginationModel.pageSize, refetch]);
+
+  if (loading) return <p>Loading customers...</p>;
+  if (error) return <p>Error loading customers: {error.message}</p>;
+
+
+
+
+
 
   // Adding new customer or editing existing customer
-  const handleAddCustomer = (data: Partial<Customer>) => {
-    if (editingIndex !== null) {
-      // Editing existing customer
-      const updatedCustomers = [...customers];
-      updatedCustomers[editingIndex] = {
-        ...updatedCustomers[editingIndex],
-        ...data,
-      };
-      setCustomers(updatedCustomers);
-      setEditingIndex(null);
-    } else {
-      // Adding new customer
-      const newCustomer: Customer = {
-        name: data.name || "Unnamed",
-        phone: data.phone || "0300-0000000",
-        createdAt: new Date().toISOString().split("T")[0],
-        balance: data.balance || "PKR 0",
-        status: data.status || "Active",
-      };
-      setCustomers([...customers, newCustomer]);
-    }
+const handleAddCustomer = async (data: Partial<Customer>) => {
+  const isEditing = editingIndex !== null;
+  const phone = data.phone || ""; // phone is used for updating
+  const input = {
+    name: data.name || "Unnamed",
+    phone: data.phone || "0300-0000000",
+    balance: data.balance || "PKR 0",
+    status: data.status || "Active",
   };
 
-  // Delete customer on Delete button click
-  const handleDeleteCustomer = (index: number) => {
+  try {
+    if (isEditing) {
+      // 🔄 Update logic
+      const result = await updateCustomerMutation({
+        variables: {
+          phone: phone,
+          updateCustomerInput: input,
+        },
+      });
+      const updatedCustomer = result.data?.updateCustomer;
+      if (updatedCustomer) {
+        const updatedList = [...customers];
+        updatedList[editingIndex!] = updatedCustomer;
+        setCustomers(updatedList);
+        console.log("✅ Customer updated from backend:", updatedCustomer);
+      }
+    } else {
+      // ➕ Create logic
+      const result = await createCustomerMutation({
+        variables: {
+          createCustomerInput: input,
+        },
+      });
+      const createdCustomer = result.data?.createCustomer;
+      if (createdCustomer) {
+        setCustomers([...customers, createdCustomer]);
+        console.log("✅ Created from backend:", createdCustomer);
+      }
+    }
+
+    setIsModalOpen(false);
+    setEditingIndex(null);
+  } catch (err) {
+    console.error("Error saving customer:", err);
+  }
+};
+
+  // Deleting customer 
+const handleDeleteCustomer = async (index: number) => {
+  const customerToDelete = customers[index];
+  if (!customerToDelete) return;
+
+  try {
+    await deleteCustomerMutation({
+      variables: {
+        phone: customerToDelete.phone,
+      },
+    });
+
+    // Remove from local state
     const filtered = customers.filter((_, i) => i !== index);
     setCustomers(filtered);
-  };
+    console.log("🗑️ Customer deleted successfully");
+  } catch (err) {
+    console.error("❌ Error deleting customer:", err);
+  }
+};
+
+
+
+
+ 
+
+
 
   // Open modal for editing with prefilled data
   const handleEditCustomer = (index: number) => {
@@ -62,17 +194,23 @@ const Customers = () => {
     setIsModalOpen(true);
   };
 
+
+
+
   // Filter customers based on activeFilter and searchTerm
-  const filteredCustomers = customers
-    .filter((cust) => {
-      if (activeFilter === "Pending Payments") return cust.status === "Pending";
-      if (activeFilter === "Received Payments") return cust.status === "Received";
-      return true; // All or unknown filter show all
-    })
-    .filter((cust) =>
-      cust.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      cust.phone.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+  // const filteredCustomers = customers
+  //   .filter((cust) => {
+  //     if (activeFilter === "Pending Payments") return cust.status === "Pending";
+  //     if (activeFilter === "Received Payments") return cust.status === "Received";
+  //     return true; // All or unknown filter show all
+  //   })
+  //   .filter((cust) =>
+  //     cust.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  //     cust.phone.toLowerCase().includes(searchTerm.toLowerCase())
+  //   );
+
+
+
 
   // Mui ka hy yeh, customer column create karny kylia, ar esko party page mi pass kar rhy hain
   const customerColumns: GridColDef[] = [
@@ -105,14 +243,15 @@ const Customers = () => {
   ];
 
   // Mui ka hy yeh, customer rows create karny kylia, ar esko partypage mi pass kar rhy hain
-  const customerRows = filteredCustomers.map((cust, index) => ({
-    id: index,
-    name: cust.name,
-    phone: cust.phone,
-    createdAt: cust.createdAt,
-    balance: cust.balance,
-    status: cust.status,
-  }));
+const customerRows = customers.map((cust, index) => ({
+  id: index, // Use stable unique ID
+  name: cust.name,
+  phone: cust.phone,
+  createdAt: cust.createdAt,
+  balance: cust.balance,
+  status: cust.status,
+}));
+
 
   return (
     <>
@@ -144,6 +283,7 @@ const Customers = () => {
         fields={[
           { name: "name", label: "Customer Name", type: "text" },
           { name: "phone", label: "Phone", type: "tel" },
+          { name: "balance", label: "Balance", type: "number " },
           {
             name: "status",
             label: "Status",
@@ -185,12 +325,29 @@ const Customers = () => {
               rows={customerRows}
               columns={customerColumns}
               paginationModel={paginationModel}
-              onPaginationModelChange={setPaginationModel}
+              paginationMode="server" // ✅ enable server-side pagination
+              onPaginationModelChange={(newModel) => {
+                setPaginationModel(newModel);
+                refetch({
+                  page: newModel.page + 1,
+                  limit: newModel.pageSize,
+                  search: searchTerm || undefined,
+                  status: activeFilter === "All" ? undefined : activeFilter,
+                });
+              }}
+              rowCount={data?.customersPaginated?.total || 0} // ✅ total from backend
               pageSizeOptions={[10, 20, 50]}
-              checkboxSelection
+  //                sortingMode="server"
+  // sortModel={sortModel}
+  // onSortModelChange={handleSortModelChange}
+    filterModel={filterModel}
+ onFilterModelChange={(model) => setFilterModel(model)}
+               checkboxSelection
               disableRowSelectionOnClick
               autoHeight
             />
+
+            
           </div>
         }
       />

@@ -28,54 +28,60 @@ import CustomerLedger from './pages/reports/CustomerLedger.tsx'
 import ProfitLossReport from './pages/reports/ProfitLossReport.tsx'
 import QuotationReport from './pages/reports/QuotationReport.tsx'
 import SalesReturnReport from './pages/reports/SalesReturnReport.tsx'
+import { ApolloClient, InMemoryCache, ApolloProvider } from "@apollo/client";
+
+const client = new ApolloClient({
+  uri: "http://localhost:3000/graphql",
+  cache: new InMemoryCache(),
+});
 
 const router = createBrowserRouter([
   {
-    path:'/',
-    element:<App/>,
-           children:[
-            {path:'/', element:<Home/>},
-            {path:'/dashboard', element:<Dashboard/>},
+    path: '/',
+    element: <App/>,
+    children: [
+      {path: '/', element: <Home/>},
+      {path: '/dashboard', element: <Dashboard/>},
 
-            // parties section pages
-            {path:'/customers', element:<Customers/>},
-            {path:'/suppliers', element:<Suppliers/>},
+      // parties section pages
+      {path: '/customers', element: <Customers/>},
+      {path: '/suppliers', element: <Suppliers/>},
 
-            // product manager section pages
-            {path:'/brands', element:<Brands/>},
-            {path:'/categories', element:<Categories/>},
-            {path:'/variations', element:<Variations/>},
-            {path:'/products', element:<Products/>},
+      // product manager section pages
+      {path: '/brands', element: <Brands/>},
+      {path: '/categories', element: <Categories/>},
+      {path: '/variations', element: <Variations/>},
+      {path: '/products', element: <Products/>},
 
-            // purchases section pages
-            {path:'/purchases', element:<Purchases/>},
-            {path:'/purchasereturn', element:<PurchaseReturnOrDebitNote/>},
-            {path:'/paymentout', element:<PaymentOut/>},
-            // sales section pages
-            {path:'/sales', element:<Sales/>},
-            {path:'/salesreturn', element:<SalesReturnOrCreditNote/>},
-            {path:'/paymentin', element:<PaymentIn/>},
-            {path:'/estimate', element:<QuotationOrEstimate/>},
+      // purchases section pages
+      {path: '/purchases', element: <Purchases/>},
+      {path: '/purchasereturn', element: <PurchaseReturnOrDebitNote/>},
+      {path: '/paymentout', element: <PaymentOut/>},
+      // sales section pages
+      {path: '/sales', element: <Sales/>},
+      {path: '/salesreturn', element: <SalesReturnOrCreditNote/>},
+      {path: '/paymentin', element: <PaymentIn/>},
+      {path: '/estimate', element: <QuotationOrEstimate/>},
 
-            // reports section pages
-            {path:'/salesreport', element:<SalesReport/>},
-            {path:'/purchasereport', element:<PurchaseReport/>},
-            {path:'/stockreport', element:<StockReport/>},
-            {path:'/paymentreport', element:<PaymentReport/>},
-            {path:'/purchasereturnreport', element:<PurchaseReturnReport/>},
-            {path:'/paymentoutreport', element:<PaymentOutReport/>},
-            {path:'/customerledger', element:<CustomerLedger/>},
-            {path:'/profitlossreport', element:<ProfitLossReport/>},
-            {path:'/quotationreport', element:<QuotationReport/>},
-            {path:'/salesreturnreport', element:<SalesReturnReport/>},
-
-           ]
+      // reports section pages
+      {path: '/salesreport', element: <SalesReport/>},
+      {path: '/purchasereport', element: <PurchaseReport/>},
+      {path: '/stockreport', element: <StockReport/>},
+      {path: '/paymentreport', element: <PaymentReport/>},
+      {path: '/purchasereturnreport', element: <PurchaseReturnReport/>},
+      {path: '/paymentoutreport', element: <PaymentOutReport/>},
+      {path: '/customerledger', element: <CustomerLedger/>},
+      {path: '/profitlossreport', element: <ProfitLossReport/>},
+      {path: '/quotationreport', element: <QuotationReport/>},
+      {path: '/salesreturnreport', element: <SalesReturnReport/>},
+    ]
   }
 ])
 
 createRoot(document.getElementById('root')!).render(
-
   <StrictMode>
-    <RouterProvider router={router} />
-  </StrictMode>,
+    <ApolloProvider client={client}>
+      <RouterProvider router={router} />
+    </ApolloProvider>
+  </StrictMode>
 )

@@ -331,7 +331,7 @@ const PurchaseReturnOrDebitNote = () => {
                 <input
                   ref={ctnRef}
                   type="number"
-                  value={newProduct.ctn}
+                  value={newProduct.ctn === 0 ? "" : newProduct.ctn}
                   onChange={(e) => setNewProduct({ ...newProduct, ctn: +e.target.value })}
                   onKeyDown={(e) => handleKeyDown(e, piecesRef, newProduct.ctn)}
                   placeholder="CTN"
@@ -341,7 +341,7 @@ const PurchaseReturnOrDebitNote = () => {
                 <input
                   ref={piecesRef}
                   type="number"
-                  value={newProduct.pieces}
+                  value={newProduct.pieces === 0 ? "" : newProduct.pieces}
                   onChange={(e) => setNewProduct({ ...newProduct, pieces: +e.target.value })}
                   onKeyDown={(e) => handleKeyDown(e, priceRef, newProduct.pieces)}
                   placeholder="Pieces"
@@ -357,7 +357,7 @@ const PurchaseReturnOrDebitNote = () => {
                 <input
                   ref={priceRef}
                   type="number"
-                  value={newProduct.price}
+                  value={newProduct.price === 0 ? "" : newProduct.price}
                   onChange={(e) => setNewProduct({ ...newProduct, price: +e.target.value })}
                   onKeyDown={(e) => handleKeyDown(e, refundAmountRef, newProduct.price)}
                   placeholder="Price"
@@ -367,7 +367,7 @@ const PurchaseReturnOrDebitNote = () => {
                 <input
                   ref={refundAmountRef}
                   type="number"
-                  value={newProduct.refundAmount}
+                  value={newProduct.refundAmount === 0 ? "" : newProduct.refundAmount}
                   onChange={(e) => setNewProduct({ ...newProduct, refundAmount: +e.target.value })}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {

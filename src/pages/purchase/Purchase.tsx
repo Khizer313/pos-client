@@ -37,12 +37,11 @@ const Purchase = () => {
   const ctnRef = useRef<HTMLInputElement>(null);
   const piecesRef = useRef<HTMLInputElement>(null);
   const priceRef = useRef<HTMLInputElement>(null);
-  const addProductBtnRef = useRef<HTMLButtonElement>(null);
 
-  // Form states
+  // Form state including global date
   const [form, setForm] = useState({
     supplier: "",
-    date: new Date().toISOString().split("T")[0],
+    date: new Date().toISOString().split("T")[0], // Date at top, once input by user
     status: "Pending",
     products: [] as Product[],
   });
@@ -79,7 +78,6 @@ const Purchase = () => {
   ) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      // Allow moving forward if optional or if current value is valid
       if (
         isOptional ||
         (typeof currentValue === "string" ? currentValue.trim() !== "" : currentValue !== 0 && currentValue !== undefined)
@@ -134,7 +132,7 @@ const Purchase = () => {
           ? purchases[editingIndex].purchaseId
           : `PUR${(purchases.length + 1).toString().padStart(3, "0")}`,
       supplier: form.supplier,
-      date: form.date,
+      date: form.date, // <-- Use global date from form state
       products: form.products,
       total: invoiceTotal.toFixed(2),
       status: form.status,
@@ -148,21 +146,21 @@ const Purchase = () => {
     resetForm();
   };
 
-  // Reset form to initial state
+  // Reset form, but keep date as is (so user doesn't have to re-enter)
   const resetForm = () => {
-    setForm({
+    setForm((prev) => ({
       supplier: "",
-      date: new Date().toISOString().split("T")[0],
+      date: prev.date, // Keep the selected date
       status: "Pending",
       products: [],
-    });
+    }));
     setNewProduct({ productName: "", ctn: 0, pieces: 0, quantity: 0, price: 0 });
     setEditingIndex(null);
     setEditingProductIndex(null);
     setShowForm(false);
   };
 
-  // Edit purchase from table
+  // Edit purchase and load its data including date
   const handleEdit = (index: number) => {
     const purchase = purchases[index];
     setForm({
@@ -251,6 +249,7 @@ const Purchase = () => {
                   onKeyDown={(e) => handleKeyDown(e, dateRef, form.supplier)}
                   placeholder="Supplier Name"
                   className="border px-3 py-2 rounded w-full"
+                  required
                 />
                 <input
                   ref={dateRef}
@@ -259,6 +258,7 @@ const Purchase = () => {
                   onChange={(e) => setForm({ ...form, date: e.target.value })}
                   onKeyDown={(e) => handleKeyDown(e, statusRef, form.date)}
                   className="border px-3 py-2 rounded w-full"
+                  required
                 />
               </div>
 
@@ -289,22 +289,22 @@ const Purchase = () => {
                 <input
                   ref={ctnRef}
                   type="number"
-                  value={newProduct.ctn}
+                  min={0}
+                  value={newProduct.ctn === 0 ? "" : newProduct.ctn}
                   onChange={(e) => setNewProduct({ ...newProduct, ctn: +e.target.value })}
                   onKeyDown={(e) => handleKeyDown(e, piecesRef, newProduct.ctn)}
                   placeholder="CTN"
                   className="border px-3 py-2 rounded"
-                  min={0}
                 />
                 <input
                   ref={piecesRef}
                   type="number"
-                  value={newProduct.pieces}
+                  min={0}
+                  value={newProduct.pieces === 0 ? "" : newProduct.pieces}
                   onChange={(e) => setNewProduct({ ...newProduct, pieces: +e.target.value })}
                   onKeyDown={(e) => handleKeyDown(e, priceRef, newProduct.pieces)}
                   placeholder="Pieces"
                   className="border px-3 py-2 rounded"
-                  min={0}
                 />
                 <input
                   readOnly
@@ -315,7 +315,8 @@ const Purchase = () => {
                 <input
                   ref={priceRef}
                   type="number"
-                  value={newProduct.price}
+                  min={0}
+                  value={newProduct.price === 0 ? "" : newProduct.price}
                   onChange={(e) => setNewProduct({ ...newProduct, price: +e.target.value })}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
@@ -325,26 +326,24 @@ const Purchase = () => {
                   }}
                   placeholder="Price"
                   className="border px-3 py-2 rounded"
-                  min={0}
                 />
-                  {/* NEW: Total calculated = quantity * price */}
-  <input
-    readOnly
-    value={(newProduct.quantity * newProduct.price).toFixed(2)}
-    placeholder="Total"
-    className="border px-3 py-2 rounded bg-gray-100"
-  />
+                {/* Total readonly input */}
+                <input
+                  readOnly
+                  value={(newProduct.quantity * newProduct.price).toFixed(2)}
+                  placeholder="Total"
+                  className="border px-3 py-2 rounded bg-gray-100"
+                />
               </div>
 
               <button
-                ref={addProductBtnRef}
                 onClick={handleAddProduct}
                 className="mt-3 px-4 py-2 bg-blue-600 text-white rounded"
               >
                 {editingProductIndex !== null ? "Update Product" : "+ Add Product"}
               </button>
 
-              {/* Product List */}
+              {/* Products list */}
               {form.products.length > 0 && (
                 <table className="w-full mt-4 text-left border-t">
                   <thead>
@@ -402,7 +401,7 @@ const Purchase = () => {
                 </table>
               )}
 
-              {/* Submit Purchase */}
+              {/* Submit button */}
               <button
                 onClick={handleSubmitPurchase}
                 className="mt-4 px-6 py-2 bg-green-600 text-white rounded"

@@ -1,12 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Autocomplete, TextField, Button, Box, Typography } from "@mui/material";
 
-// Expanded Field type with optional autocomplete options
 type Field = {
   name: string;
   label: string;
   type?: string;
-  options?: string[]; // If provided, show MUI Autocomplete with these options, otherwise mui ka autocomplete nhi hoga balkeh apka apna manually rakhna pary ga
+  options?: string[];
 };
 
 type AddItemModalProps = {
@@ -15,7 +14,7 @@ type AddItemModalProps = {
   onSubmit: (data: Record<string, string>) => void;
   title: string;
   fields: Field[];
-  defaultValues?: Record<string, string>; // Added for pre-filling edit data
+  defaultValues?: Record<string, string>;
 };
 
 const AddItemModal: React.FC<AddItemModalProps> = ({
@@ -24,45 +23,55 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
   onSubmit,
   title,
   fields,
-  defaultValues = {}, // default empty object
+  defaultValues = {},
 }) => {
   const [formData, setFormData] = useState<Record<string, string>>({});
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // When modal opens or defaultValues changes, set formData accordingly
   useEffect(() => {
     if (isOpen) {
       setFormData(defaultValues);
+      setTimeout(() => {
+        inputRefs.current[0]?.focus();
+      }, 0);
     }
   }, [defaultValues, isOpen]);
 
-  // Update form data on input or autocomplete change
   const handleChange = (fieldName: string, value: string) => {
     setFormData((prev) => ({ ...prev, [fieldName]: value }));
   };
 
-  // Validate all fields have some value and submit
   const handleSubmit = () => {
     const isValid = fields.every((f) => formData[f.name]?.trim());
     if (isValid) {
       onSubmit(formData);
-      setFormData({}); // reset form on submit
+      setFormData({});
       onClose();
     } else {
       alert("Please fill in all fields.");
     }
   };
 
-  // If modal closed, render nothing
-  if (!isOpen) return null;
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const nextInput = inputRefs.current[index + 1];
+      if (nextInput) {
+        nextInput.focus();
+      } else {
+        document.getElementById("submit-button")?.focus();
+      }
+    }
+  };
 
-  // Map specific fields to their correct input types or options
-  // You can extend this mapping if you want more custom logic
   const getInputType = (field: Field): string => {
     if (field.name === "phone") return "tel";
     if (field.name === "balance") return "number";
-    if (field.name === "status") return "text"; // status will be dropdown via options
+    if (field.name === "status") return "text";
     return field.type || "text";
   };
+
+  if (!isOpen) return null;
 
   return (
     <Box
@@ -87,7 +96,6 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
           boxShadow: 24,
           display: "flex",
           flexDirection: "column",
-          overflow: "hidden",
         }}
       >
         <Typography variant="h6" mb={3}>
@@ -97,26 +105,21 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
         <Box
           sx={{
             overflowY: "auto",
-            pr: 2, // Add padding to prevent scrollbar overlap
+            pr: 2,
             mb: 3,
             display: "grid",
             gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" },
             gap: 2,
-            "& > *": {
-              minWidth: 0, // Prevent grid items from overflowing
-            },
           }}
         >
-          {/* agar koi component fields.options bhej raha hy to mui autocomplete work hoga, otherwise simple input */}
-          {fields.map((field) =>
+          {fields.map((field, index) =>
             field.options ? (
               <Autocomplete
-                autoComplete
                 key={field.name}
                 options={field.options}
                 value={formData[field.name] || ""}
                 onInputChange={(_, newValue) => handleChange(field.name, newValue)}
-                freeSolo // allows typing values outside options
+                freeSolo
                 renderInput={(params) => (
                   <TextField
                     {...params}
@@ -124,9 +127,11 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
                     variant="outlined"
                     margin="dense"
                     fullWidth
+                    inputRef={(el) => (inputRefs.current[index] = el)}
+                    onKeyDown={(e) => handleKeyDown(e, index)}
                     inputProps={{
                       ...params.inputProps,
-                      autoComplete: "on", // disable autocomplete to avoid browser autofill
+                      autoComplete: "on",
                     }}
                   />
                 )}
@@ -134,13 +139,15 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
             ) : (
               <TextField
                 key={field.name}
-                type={getInputType(field)} // Set input type dynamically
+                type={getInputType(field)}
                 label={field.label}
                 value={formData[field.name] || ""}
                 onChange={(e) => handleChange(field.name, e.target.value)}
                 variant="outlined"
                 margin="dense"
                 fullWidth
+                inputRef={(el) => (inputRefs.current[index] = el)}
+                onKeyDown={(e) => handleKeyDown(e, index)}
                 inputProps={{
                   autoComplete: "off",
                   inputMode:
@@ -166,7 +173,11 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
           <Button variant="outlined" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="contained" onClick={handleSubmit}>
+          <Button
+            variant="contained"
+            onClick={handleSubmit}
+            id="submit-button"
+          >
             {title.includes("Edit") ? "Update" : "Add"}
           </Button>
         </Box>

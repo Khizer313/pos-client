@@ -44,7 +44,9 @@ const QuotationOrEstimate = () => {
     status: "Pending",
   });
 
-  const [newProduct, setNewProduct] = useState<Omit<QuotationProduct, "total" | "quantity">>({
+  const [newProduct, setNewProduct] = useState<
+    Omit<QuotationProduct, "total" | "quantity">
+  >({
     productName: "",
     ctn: 0,
     pieces: 0,
@@ -65,7 +67,9 @@ const QuotationOrEstimate = () => {
       e.preventDefault();
       if (
         isOptional ||
-        (typeof currentValue === "string" ? currentValue.trim() !== "" : currentValue !== 0)
+        (typeof currentValue === "string"
+          ? currentValue.trim() !== ""
+          : currentValue !== 0)
       ) {
         nextRef?.current?.focus();
       }
@@ -90,7 +94,9 @@ const QuotationOrEstimate = () => {
     };
 
     let updatedProducts = [...form.products];
-    const existingIndex = updatedProducts.findIndex((p) => p.productName === product.productName);
+    const existingIndex = updatedProducts.findIndex(
+      (p) => p.productName === product.productName
+    );
 
     if (existingIndex !== -1) {
       updatedProducts[existingIndex] = product;
@@ -124,12 +130,12 @@ const QuotationOrEstimate = () => {
     // Auto-generate quoteNo only if new quotation (not editing)
     let newQuoteNo = "";
     if (editingIndex === null) {
-      const existingNumbers = quotations
-        .map((q) => {
-          const match = q.quoteNo.match(/QTN(\d+)/);
-          return match ? parseInt(match[1], 10) : 0;
-        });
-      const maxNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0;
+      const existingNumbers = quotations.map((q) => {
+        const match = q.quoteNo.match(/QTN(\d+)/);
+        return match ? parseInt(match[1], 10) : 0;
+      });
+      const maxNumber =
+        existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0;
       newQuoteNo = `QTN${(maxNumber + 1).toString().padStart(3, "0")}`;
     } else {
       newQuoteNo = quotations[editingIndex].quoteNo;
@@ -144,7 +150,9 @@ const QuotationOrEstimate = () => {
     };
 
     if (editingIndex !== null) {
-      setQuotations((prev) => prev.map((q, i) => (i === editingIndex ? newQuotation : q)));
+      setQuotations((prev) =>
+        prev.map((q, i) => (i === editingIndex ? newQuotation : q))
+      );
     } else {
       setQuotations((prev) => [...prev, newQuotation]);
     }
@@ -254,7 +262,9 @@ const QuotationOrEstimate = () => {
                 <input
                   ref={customerRef}
                   value={form.customer}
-                  onChange={(e) => setForm({ ...form, customer: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, customer: e.target.value })
+                  }
                   onKeyDown={(e) => handleKeyDown(e, dateRef, form.customer)}
                   placeholder="Customer Name"
                   className="border px-3 py-2 rounded w-full"
@@ -272,7 +282,9 @@ const QuotationOrEstimate = () => {
                   ref={statusRef}
                   value={form.status}
                   onChange={(e) => setForm({ ...form, status: e.target.value })}
-                  onKeyDown={(e) => handleKeyDown(e, productNameRef, form.status)}
+                  onKeyDown={(e) =>
+                    handleKeyDown(e, productNameRef, form.status)
+                  }
                   className="border px-3 py-2 rounded w-full"
                 >
                   <option value="Pending">Pending</option>
@@ -287,27 +299,40 @@ const QuotationOrEstimate = () => {
                 <input
                   ref={productNameRef}
                   value={newProduct.productName}
-                  onChange={(e) => setNewProduct({ ...newProduct, productName: e.target.value })}
-                  onKeyDown={(e) => handleKeyDown(e, ctnRef, newProduct.productName)}
+                  onChange={(e) =>
+                    setNewProduct({
+                      ...newProduct,
+                      productName: e.target.value,
+                    })
+                  }
+                  onKeyDown={(e) =>
+                    handleKeyDown(e, ctnRef, newProduct.productName)
+                  }
                   placeholder="Product Name"
                   className="border px-3 py-2 rounded"
                 />
                 <input
                   ref={ctnRef}
+                  min='0'
                   type="number"
-                  value={newProduct.ctn}
-                  onChange={(e) => setNewProduct({ ...newProduct, ctn: +e.target.value })}
+                 value={newProduct.ctn === 0 ? "" : newProduct.ctn}
+                  onChange={(e) =>
+                    setNewProduct({ ...newProduct, ctn: +e.target.value || 0 })
+                  }
                   onKeyDown={(e) => handleKeyDown(e, piecesRef, newProduct.ctn)}
                   placeholder="CTN"
-                  min={0}
                   className="border px-3 py-2 rounded"
                 />
                 <input
                   ref={piecesRef}
                   type="number"
-                  value={newProduct.pieces}
-                  onChange={(e) => setNewProduct({ ...newProduct, pieces: +e.target.value })}
-                  onKeyDown={(e) => handleKeyDown(e, priceRef, newProduct.pieces)}
+                 value={newProduct.pieces === 0 ? "" : newProduct.pieces}
+                  onChange={(e) =>
+                    setNewProduct({ ...newProduct, pieces: +e.target.value })
+                  }
+                  onKeyDown={(e) =>
+                    handleKeyDown(e, priceRef, newProduct.pieces)
+                  }
                   placeholder="Pieces"
                   min={0}
                   className="border px-3 py-2 rounded"
@@ -321,14 +346,25 @@ const QuotationOrEstimate = () => {
                 <input
                   ref={priceRef}
                   type="number"
-                  value={newProduct.price}
-                  onChange={(e) => setNewProduct({ ...newProduct, price: +e.target.value })}
-                  onKeyDown={(e) => handleKeyDown(e, undefined, newProduct.price, true)}
+                 value={newProduct.price === 0 ? "" : newProduct.price}
+                  onChange={(e) =>
+                    setNewProduct({ ...newProduct, price: +e.target.value })
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddProduct(); // ✅ Call the function directly
+                    }
+                  }}
                   placeholder="Price"
                   min={0}
                   className="border px-3 py-2 rounded"
                 />
-                <button onClick={handleAddProduct} className="bg-blue-600 text-white rounded px-4 py-2">
+
+                <button
+                  onClick={handleAddProduct}
+                  className="bg-blue-600 text-white rounded px-4 py-2"
+                >
                   + Add Product
                 </button>
               </div>
@@ -387,13 +423,18 @@ const QuotationOrEstimate = () => {
               {/* Total & Submit */}
               <div className="mt-4 flex justify-between items-center">
                 <div className="font-semibold text-lg">
-                  Total: {form.products.reduce((acc, p) => acc + p.total, 0).toFixed(2)}
+                  Total:{" "}
+                  {form.products
+                    .reduce((acc, p) => acc + p.total, 0)
+                    .toFixed(2)}
                 </div>
                 <button
                   onClick={handleSubmitQuotation}
                   className="bg-green-600 text-white rounded px-6 py-2"
                 >
-                  {editingIndex !== null ? "Update Quotation" : "Submit Quotation"}
+                  {editingIndex !== null
+                    ? "Update Quotation"
+                    : "Submit Quotation"}
                 </button>
               </div>
             </div>

@@ -42,10 +42,10 @@ const Sales = () => {
   const piecesRef = useRef<HTMLInputElement>(null);
   const priceRef = useRef<HTMLInputElement>(null);
 
-  // Form state
+  // Form state including date at top — this date applies for all new sales until changed by user
   const [form, setForm] = useState({
     customer: "",
-    date: new Date().toISOString().split("T")[0],
+    date: new Date().toISOString().split("T")[0],  // date at top to be entered once
     status: "Pending",
     paymentMethod: "Cash",
     notes: "",
@@ -69,12 +69,10 @@ const Sales = () => {
 
   // Auto-calculate quantity when ctn or pieces changes
   useEffect(() => {
-    if (newProduct.ctn > 0 && newProduct.pieces > 0) {
-      setNewProduct(prev => ({
-        ...prev,
-        quantity: prev.ctn * prev.pieces
-      }));
-    }
+    setNewProduct(prev => ({
+      ...prev,
+      quantity: prev.ctn * prev.pieces,
+    }));
   }, [newProduct.ctn, newProduct.pieces]);
 
   // Handle Enter key navigation with validation
@@ -84,39 +82,34 @@ const Sales = () => {
     currentValue?: string | number,
     isOptional: boolean = false
   ) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       e.preventDefault();
 
-      if (!isOptional) {
-        if (
-          currentValue === undefined ||
-          currentValue === null ||
-          (typeof currentValue === 'string' && currentValue.trim() === '') ||
-          (typeof currentValue === 'number' && isNaN(currentValue))
-        ) {
-          return;
-        }
+      if (
+        isOptional ||
+        (typeof currentValue === "string"
+          ? currentValue.trim() !== ""
+          : currentValue !== 0 && currentValue !== undefined && currentValue !== null)
+      ) {
+        nextRef?.current?.focus();
       }
-
-      nextRef?.current?.focus();
     }
   };
 
-  // Filter sales for search
+  // Filter sales for search and active filter
   const filteredSales = sales
-  .filter((sale) => {
-    if (activeFilter === "Pending") return sale.status === "Pending";
-    if (activeFilter === "Paid") return sale.status === "Paid";
-    return true;
-  })
-  .filter((sale) =>
-    Object.values(sale).some((val) =>
-      String(val).toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  );
+    .filter((sale) => {
+      if (activeFilter === "Pending") return sale.status === "Pending";
+      if (activeFilter === "Paid") return sale.status === "Paid";
+      return true;
+    })
+    .filter((sale) =>
+      Object.values(sale).some((val) =>
+        String(val).toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    );
 
-
-  // Columns for DataGrid
+  // DataGrid columns
   const columns: GridColDef[] = [
     { field: "invoiceNo", headerName: "Invoice No", flex: 1 },
     { field: "customer", headerName: "Customer", flex: 1 },
@@ -129,14 +122,14 @@ const Sales = () => {
       flex: 1,
       renderCell: (params) => (
         <div className="flex space-x-2">
-          <button 
-            className="text-blue-600 hover:text-blue-800 hover:underline" 
+          <button
+            className="text-blue-600 hover:text-blue-800 hover:underline"
             onClick={() => handleEdit(params.id as number)}
           >
             Edit
           </button>
-          <button 
-            className="text-red-600 hover:text-red-800 hover:underline" 
+          <button
+            className="text-red-600 hover:text-red-800 hover:underline"
             onClick={() => handleDelete(params.id as number)}
           >
             Delete
@@ -146,13 +139,13 @@ const Sales = () => {
     },
   ];
 
-  // Helper functions
+  // Add product to form.products
   const handleAddProduct = () => {
     if (!newProduct.productName || !newProduct.price) return;
-    
+
     const total = newProduct.quantity * newProduct.price;
     const updatedProducts = [...form.products];
-    
+
     if (editingProductIndex !== null) {
       updatedProducts[editingProductIndex] = { ...newProduct, total };
     } else {
@@ -165,14 +158,18 @@ const Sales = () => {
     productNameRef.current?.focus();
   };
 
+  // Submit or update sale, using date from form.date only once at top (applies to all sales)
   const handleSubmitSale = () => {
     if (!form.customer || form.products.length === 0) return;
-    
+
     const invoiceTotal = form.products.reduce((acc, p) => acc + p.total, 0);
     const newSale: Sale = {
-      invoiceNo: editingIndex !== null ? sales[editingIndex].invoiceNo : `INV${(sales.length + 1).toString().padStart(3, "0")}`,
+      invoiceNo:
+        editingIndex !== null
+          ? sales[editingIndex].invoiceNo
+          : `INV${(sales.length + 1).toString().padStart(3, "0")}`,
       customer: form.customer,
-      date: form.date,
+      date: form.date, // <- date used from top input only once for all sales
       products: form.products,
       total: invoiceTotal.toFixed(2),
       status: form.status,
@@ -180,14 +177,19 @@ const Sales = () => {
       notes: form.notes,
     };
 
-    setSales(editingIndex !== null ? sales.map((s, i) => i === editingIndex ? newSale : s) : [...sales, newSale]);
+    setSales(
+      editingIndex !== null
+        ? sales.map((s, i) => (i === editingIndex ? newSale : s))
+        : [...sales, newSale]
+    );
     resetForm();
   };
 
+  // Reset form but keep date as is (optional: reset date to today if you want)
   const resetForm = () => {
     setForm({
       customer: "",
-      date: new Date().toISOString().split("T")[0],
+      date: form.date, // keep current date so user doesn't have to re-enter each time
       status: "Pending",
       paymentMethod: "Cash",
       notes: "",
@@ -199,6 +201,7 @@ const Sales = () => {
     setShowForm(false);
   };
 
+  // Edit existing sale - loads date too
   const handleEdit = (index: number) => {
     const sale = sales[index];
     setForm({
@@ -213,30 +216,32 @@ const Sales = () => {
     setShowForm(true);
   };
 
+  // Delete sale
   const handleDelete = (index: number) => {
     if (window.confirm("Are you sure you want to delete this invoice?")) {
       setSales(sales.filter((_, i) => i !== index));
     }
   };
 
+  // Rows for DataGrid
   const rows = filteredSales.map((s, i) => ({ id: i, ...s }));
 
   return (
     <PartyPage
-  title="Sales"
-  breadcrumbs={["Dashboard", "Sales"]}
-  buttons={[
-    {
-      label: showForm ? "Close Form" : "+ Add New Sale",
-      variant: "primary",
-      onClick: () => setShowForm(!showForm),
-    },
-  ]}
-  filters={["All", "Paid", "Pending"]}
-  searchTerm={searchTerm}
-  onSearchChange={(value) => setSearchTerm(value)}
-  activeFilter={activeFilter}
-  onFilterChange={setActiveFilter}
+      title="Sales"
+      breadcrumbs={["Dashboard", "Sales"]}
+      buttons={[
+        {
+          label: showForm ? "Close Form" : "+ Add New Sale",
+          variant: "primary",
+          onClick: () => setShowForm(!showForm),
+        },
+      ]}
+      filters={["All", "Paid", "Pending"]}
+      searchTerm={searchTerm}
+      onSearchChange={(value) => setSearchTerm(value)}
+      activeFilter={activeFilter}
+      onFilterChange={setActiveFilter}
       customTable={
         <div className="space-y-6">
           {showForm && (
@@ -245,14 +250,16 @@ const Sales = () => {
                 {editingIndex !== null ? "Edit Sale" : "Add New Sale"}
               </h2>
 
-              {/* Customer Info */}
+              {/* Customer Info and Date input at top, user enters date once */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Customer Name*</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Customer Name*
+                  </label>
                   <input
                     ref={customerInputRef}
                     value={form.customer}
-                    onChange={(e) => setForm({...form, customer: e.target.value})}
+                    onChange={(e) => setForm({ ...form, customer: e.target.value })}
                     onKeyDown={(e) => handleKeyDown(e, dateInputRef, form.customer)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Enter customer name"
@@ -261,12 +268,14 @@ const Sales = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date*</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Date*
+                  </label>
                   <input
                     ref={dateInputRef}
                     type="date"
                     value={form.date}
-                    onChange={(e) => setForm({...form, date: e.target.value})}
+                    onChange={(e) => setForm({ ...form, date: e.target.value })}
                     onKeyDown={(e) => handleKeyDown(e, statusSelectRef, form.date)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     required
@@ -274,14 +283,14 @@ const Sales = () => {
                 </div>
               </div>
 
-              {/* Status and Payment */}
+              {/* Status and Payment Method */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Status*</label>
                   <select
                     ref={statusSelectRef}
                     value={form.status}
-                    onChange={(e) => setForm({...form, status: e.target.value})}
+                    onChange={(e) => setForm({ ...form, status: e.target.value })}
                     onKeyDown={(e) => handleKeyDown(e, paymentMethodRef, form.status)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     required
@@ -296,7 +305,7 @@ const Sales = () => {
                   <select
                     ref={paymentMethodRef}
                     value={form.paymentMethod}
-                    onChange={(e) => setForm({...form, paymentMethod: e.target.value})}
+                    onChange={(e) => setForm({ ...form, paymentMethod: e.target.value })}
                     onKeyDown={(e) => handleKeyDown(e, notesRef, form.paymentMethod)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     required
@@ -313,7 +322,7 @@ const Sales = () => {
                 <textarea
                   ref={notesRef}
                   value={form.notes}
-                  onChange={(e) => setForm({...form, notes: e.target.value})}
+                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   onKeyDown={(e) => handleKeyDown(e, productNameRef, form.notes, true)}
                   rows={3}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
@@ -328,7 +337,7 @@ const Sales = () => {
                   <input
                     ref={productNameRef}
                     value={newProduct.productName}
-                    onChange={(e) => setNewProduct({...newProduct, productName: e.target.value})}
+                    onChange={(e) => setNewProduct({ ...newProduct, productName: e.target.value })}
                     onKeyDown={(e) => handleKeyDown(e, ctnRef, newProduct.productName)}
                     className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Product Name*"
@@ -338,8 +347,8 @@ const Sales = () => {
                     ref={ctnRef}
                     type="number"
                     min="0"
-                    value={newProduct.ctn || ''}
-                    onChange={(e) => setNewProduct({...newProduct, ctn: +e.target.value || 0})}
+                    value={newProduct.ctn || ""}
+                    onChange={(e) => setNewProduct({ ...newProduct, ctn: +e.target.value || 0 })}
                     onKeyDown={(e) => handleKeyDown(e, piecesRef, newProduct.ctn)}
                     className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     placeholder="CTN*"
@@ -349,8 +358,8 @@ const Sales = () => {
                     ref={piecesRef}
                     type="number"
                     min="0"
-                    value={newProduct.pieces || ''}
-                    onChange={(e) => setNewProduct({...newProduct, pieces: +e.target.value || 0})}
+                    value={newProduct.pieces || ""}
+                    onChange={(e) => setNewProduct({ ...newProduct, pieces: +e.target.value || 0 })}
                     onKeyDown={(e) => handleKeyDown(e, priceRef, newProduct.pieces)}
                     className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Pieces/CTN*"
@@ -359,7 +368,7 @@ const Sales = () => {
                   <input
                     type="number"
                     min="0"
-                    value={newProduct.quantity || ''}
+                    value={newProduct.quantity || ""}
                     readOnly
                     className="px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100"
                     placeholder="Auto-calculated"
@@ -369,28 +378,30 @@ const Sales = () => {
                     type="number"
                     min="0"
                     step="0.01"
-                    value={newProduct.price || ''}
-                    onChange={(e) => setNewProduct({...newProduct, price: +e.target.value || 0})}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddProduct()}
+                    value={newProduct.price || ""}
+                    onChange={(e) => setNewProduct({ ...newProduct, price: +e.target.value || 0 })}
+                    onKeyDown={(e) => e.key === "Enter" && handleAddProduct()}
                     className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Price*"
                     required
                   />
-                    {/* NEW: Total calculated = quantity * price */}
-  <input
-    readOnly
-    value={(newProduct.quantity * newProduct.price).toFixed(2)}
-    placeholder="Total"
-    className="border px-3 py-2 rounded bg-gray-100"
-  />
+                  {/* Total calculated = quantity * price */}
+                  <input
+                    readOnly
+                    value={(newProduct.quantity * newProduct.price).toFixed(2)}
+                    placeholder="Total"
+                    className="border px-3 py-2 rounded bg-gray-100"
+                  />
                 </div>
                 <button
                   onClick={handleAddProduct}
-                  disabled={!newProduct.productName || !newProduct.price || !newProduct.ctn || !newProduct.pieces}
+                  disabled={
+                    !newProduct.productName || !newProduct.price || !newProduct.ctn || !newProduct.pieces
+                  }
                   className={`mt-3 px-4 py-2 rounded-md shadow ${
                     !newProduct.productName || !newProduct.price || !newProduct.ctn || !newProduct.pieces
-                      ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-blue-600 hover:bg-blue-700 text-white"
                   }`}
                 >
                   {editingProductIndex !== null ? "Update Product" : "+ Add Product"}
@@ -403,13 +414,27 @@ const Sales = () => {
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-100">
                       <tr>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CTN</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pieces/CTN</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Qty</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Product
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          CTN
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Pieces/CTN
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Total Qty
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Price
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Total
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -436,7 +461,7 @@ const Sales = () => {
                               onClick={() => {
                                 setForm({
                                   ...form,
-                                  products: form.products.filter((_, i) => i !== index)
+                                  products: form.products.filter((_, i) => i !== index),
                                 });
                               }}
                               className="text-red-600 hover:text-red-800"
@@ -449,7 +474,9 @@ const Sales = () => {
                     </tbody>
                     <tfoot>
                       <tr className="bg-gray-50">
-                        <td colSpan={5} className="px-4 py-2 text-right font-medium text-gray-900">Grand Total:</td>
+                        <td colSpan={5} className="px-4 py-2 text-right font-medium text-gray-900">
+                          Grand Total:
+                        </td>
                         <td className="px-4 py-2 font-medium text-gray-900">
                           {form.products.reduce((sum, p) => sum + p.total, 0).toFixed(2)}
                         </td>
@@ -464,7 +491,11 @@ const Sales = () => {
               <button
                 onClick={handleSubmitSale}
                 disabled={!form.customer || form.products.length === 0}
-                className={`px-6 py-2 rounded-md shadow ${(!form.customer || form.products.length === 0) ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white font-medium`}
+                className={`px-6 py-2 rounded-md shadow ${
+                  !form.customer || form.products.length === 0
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : "bg-green-600 hover:bg-green-700"
+                } text-white font-medium`}
               >
                 {editingIndex !== null ? "Update Sale" : "Submit Sale"}
               </button>
@@ -479,8 +510,8 @@ const Sales = () => {
               autoHeight
               pageSizeOptions={[10]}
               sx={{
-                '& .MuiDataGrid-cell:focus': { outline: 'none' },
-                '& .MuiDataGrid-columnHeader:focus': { outline: 'none' },
+                "& .MuiDataGrid-cell:focus": { outline: "none" },
+                "& .MuiDataGrid-columnHeader:focus": { outline: "none" },
               }}
             />
           </div>
