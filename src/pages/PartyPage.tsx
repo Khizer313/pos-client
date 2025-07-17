@@ -24,6 +24,16 @@ interface PartyPageProps {
 
   activeFilter?: string;             // active filter state from parent
   onFilterChange?: (filter: string) => void;  // notify parent on filter change
+
+
+
+    // New props for date range inputs:
+  startDate?: string;
+  endDate?: string;
+  onStartDateChange?: (date: string) => void;
+  onEndDateChange?: (date: string) => void;
+  onClearDateRange?: () => void;
+  
 }
 
 const PartyPage: React.FC<PartyPageProps> = ({
@@ -38,6 +48,15 @@ const PartyPage: React.FC<PartyPageProps> = ({
   onSearchChange,
   activeFilter = "All",
   onFilterChange,
+
+
+
+  
+  startDate,
+  endDate,
+  onStartDateChange,
+  onEndDateChange,
+  onClearDateRange,
 }) => {
   // Note: activeFilter is now controlled from parent
 
@@ -55,11 +74,65 @@ const PartyPage: React.FC<PartyPageProps> = ({
 
   return (
     <div className="p-4 space-y-4">
-      {/* Title & Breadcrumbs */}
-      <div>
-        <h1 className="text-2xl font-bold">{title}</h1>
-        <p className="text-sm text-gray-500">{breadcrumbs.join(" / ")}</p>
+{/* Title + Breadcrumbs + Date Inputs in a single flex row */}
+{/* Title (full row) */}
+<div>
+  <h1 className="text-2xl font-bold">{title}</h1>
+</div>
+
+{/* Breadcrumbs (left) + Date Inputs (right) */}
+<div className="flex justify-between items-start flex-wrap gap-4">
+  {/* Breadcrumbs Left */}
+  <p className="text-sm text-gray-500">{breadcrumbs.join(" / ")}</p>
+
+  {/* Date Inputs Right */}
+  {(onStartDateChange && onEndDateChange) && (
+    <div className="flex items-end gap-4 bg-gray-50 p-2 rounded-md border border-gray-200">
+      <div className="flex flex-col">
+        <label htmlFor="start-date" className="text-xs font-medium text-gray-700 mb-1">
+          📅 Start Date
+        </label>
+        <input
+          id="start-date"
+          type="date"
+          value={startDate}
+          onChange={(e) => onStartDateChange(e.target.value)}
+          className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
       </div>
+
+      <div className="flex flex-col">
+        <label htmlFor="end-date" className="text-xs font-medium text-gray-700 mb-1">
+          🗓️ End Date
+        </label>
+        <input
+          id="end-date"
+          type="date"
+          value={endDate}
+          onChange={(e) => onEndDateChange(e.target.value)}
+          className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      {(startDate || endDate) && onClearDateRange && (
+        <button
+          onClick={onClearDateRange}
+          className="text-sm text-red-600 underline mb-1"
+          type="button"
+        >
+          ❌ Clear
+        </button>
+      )}
+    </div>
+  )}
+</div>
+
+
+
+
+
+
+
 
       {/* Buttons & Search Bar */}
       <div className="flex flex-wrap items-center gap-4">

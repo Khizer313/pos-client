@@ -29,6 +29,11 @@ import ProfitLossReport from './pages/reports/ProfitLossReport.tsx'
 import QuotationReport from './pages/reports/QuotationReport.tsx'
 import SalesReturnReport from './pages/reports/SalesReturnReport.tsx'
 import { ApolloClient, InMemoryCache, ApolloProvider } from "@apollo/client";
+import ErrorBoundary from './components/ErrorBoundary.tsx'
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+
+
 
 const client = new ApolloClient({
   uri: "http://localhost:3000/graphql",
@@ -78,10 +83,15 @@ const router = createBrowserRouter([
   }
 ])
 
-createRoot(document.getElementById('root')!).render(
+createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ApolloProvider client={client}>
-      <RouterProvider router={router} />
-    </ApolloProvider>
+    <ErrorBoundary>
+      <LocalizationProvider dateAdapter={AdapterDateFns}>
+
+      <ApolloProvider client={client}>
+        <RouterProvider router={router} />
+      </ApolloProvider>
+      </LocalizationProvider>
+    </ErrorBoundary>
   </StrictMode>
-)
+);

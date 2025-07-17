@@ -1,121 +1,146 @@
-import { useState } from "react";
-import { DataGrid, type GridColDef, type GridPaginationModel } from "@mui/x-data-grid";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { DataGrid, type GridColDef, type GridPaginationModel, type GridFilterModel } from "@mui/x-data-grid";
+import { useMutation, useQuery, NetworkStatus } from "@apollo/client";
+
 import PartyPage from "../../PartyPage";
 import AddItemModal from "../../../components/AddItemModel";
-import { useMutation } from "@apollo/client";
-import { CREATE_CUSTOMER } from "../../../graphql/mutations"; 
 
-import {  useEffect } from "react";
-import { useQuery } from "@apollo/client";
-// import { GET_CUSTOMERS } from "../../../graphql/queries/customers";
-import { UPDATE_CUSTOMER } from "../../../graphql/mutations";
-import { DELETE_CUSTOMER } from "../../../graphql/mutations";
+import { CREATE_CUSTOMER, UPDATE_CUSTOMER, DELETE_CUSTOMER } from "../../../graphql/mutations";
 import { GET_CUSTOMERS_PAGINATED } from "../../../graphql/queries/customers";
-// import type { GridSortModel } from '@mui/x-data-grid';
+import { Skeleton } from "@mui/material";
 
-import { type GridFilterModel } from "@mui/x-data-grid";
+import { useDebounce } from "../../../hooks/useDebounce"; // ✅ Custom hook for debouncing
+import { throttle } from "../../../hooks/useThrottle"; // ✅ Add this import
+// import DateRangeFilter from "../../../components/DateRangeFilter";
 
 
 
 type Customer = {
+   customerId: number;
   name: string;
   phone: string;
   createdAt: string;
   balance: string;
   status: string;
 };
+type RefetchVars = {
+  page: number;
+  limit: number;
+  search?: string;
+  status?: string;
+   startDate?: string; // ✅ Add this
+  endDate?: string; 
+};
+
+
 
 const Customers = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");   // 1. Search term state
-  const [editingIndex, setEditingIndex] = useState<number | null>(null); // track which customer is editing
-  // Active filter state lifted up for PartyPage filters ("All", "To Collect", "To Pay")
+  const [searchTerm, setSearchTerm] = useState(""); // 🔍 User-typed search term
+const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [activeFilter, setActiveFilter] = useState("All");
 
-  // const { data, loading, error } = useQuery(GET_CUSTOMERS);
-  
-  const [createCustomerMutation] = useMutation(CREATE_CUSTOMER);
-const [deleteCustomerMutation] = useMutation(DELETE_CUSTOMER);
-const [updateCustomerMutation] = useMutation(UPDATE_CUSTOMER);
-
-
-  // using it for mui pagination 
   const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
     page: 0,
     pageSize: 10,
   });
 
+  const [filterModel, setFilterModel] = useState<GridFilterModel>({ items: [] });
 
-const [filterModel, setFilterModel] = useState<GridFilterModel>({
-  items: [],
-});
+  // ✅ Debounced searchTerm (delay firing queries)
+  const debouncedSearch = useDebounce(searchTerm, 400);
 
-
-
-// sorting based on columns
-// const [sortModel, setSortModel] = useState<GridSortModel>([]);
-// const handleSortModelChange = (model: GridSortModel) => {
-//   setSortModel(model);
-// };
+  // GraphQL Mutations
+  const [createCustomerMutation] = useMutation(CREATE_CUSTOMER);
+  const [updateCustomerMutation] = useMutation(UPDATE_CUSTOMER);
+  const [deleteCustomerMutation] = useMutation(DELETE_CUSTOMER);
 
 
+const [startDate, setStartDate] = useState<string>("");
+const [endDate, setEndDate] = useState<string>("");
 
-// getting paginating customers - server side pagination
-const { data, loading, error, refetch } = useQuery(GET_CUSTOMERS_PAGINATED, {
-  variables: {
-    page: paginationModel.page + 1,
-    limit: paginationModel.pageSize,
-    search: searchTerm || undefined,
-    status: activeFilter !== "All" ? activeFilter : undefined,
-    //   sortBy: sortModel[0]?.field || null,
-    // sortOrder: sortModel[0]?.sort || null
-  },
-});
-
-// mui column wise filtering
- useEffect(() => {
-  const nameFilter = filterModel.items.find((item) => item.field === "name")?.value;
-  const statusFilter = filterModel.items.find((item) => item.field === "status")?.value;
-  refetch({
-    page: paginationModel.page + 1,
-    limit: paginationModel.pageSize,
-    search: nameFilter || "",
-    status: statusFilter || "",
-  });
-}, [filterModel, paginationModel, refetch]);
+  // ✏️ Edit customer
+const handleEditCustomer = useCallback((id: number) => {
+  const customer = customers.find((c) => c.customerId === id);
+  if (customer) {
+    setEditingCustomer(customer);
+    setIsModalOpen(true);
+  }
+}, [customers]);
 
 
+// 🗑️ Delete Customer
+const handleDeleteCustomer = useCallback(
+  async (customerId: number) => {
+    const customerToDelete = customers.find((c) => c.customerId === customerId);
+    if (!customerToDelete) return;
 
-  useEffect(() => {
-    if (data?.customersPaginated?.data) {
-      setCustomers(data.customersPaginated.data);
+    try {
+      await deleteCustomerMutation({
+        variables: { phone: customerToDelete.phone },
+      });
+
+      setCustomers((prev) => prev.filter((c) => c.customerId !== customerId));
+    } catch (err) {
+      console.error("❌ Error deleting customer:", err);
     }
-  }, [data]);
-
-
-//filtering based on All, Pending, Received buttons
-  useEffect(() => {
-    refetch({
-      page: paginationModel.page + 1,
-      limit: paginationModel.pageSize,
-      search: searchTerm || undefined,
-      status: activeFilter === "Pending Payments"? "Pending": activeFilter === "Received Payments"? "Received": undefined,
-          });
-}, [searchTerm, activeFilter, paginationModel.page, paginationModel.pageSize, refetch]);
-
-  if (loading) return <p>Loading customers...</p>;
-  if (error) return <p>Error loading customers: {error.message}</p>;
+  },
+  [customers, deleteCustomerMutation]
+);
 
 
 
 
 
+  // 📊 MUI Rows
+const customerRows = useMemo(() => {
+  return customers.map((cust) => ({
+    id: cust.customerId, // ✅ short readable ID
+    ...cust,
+  }));
+}, [customers]);
 
-  // Adding new customer or editing existing customer
-const handleAddCustomer = async (data: Partial<Customer>) => {
-  const isEditing = editingIndex !== null;
-  const phone = data.phone || ""; // phone is used for updating
+
+  // 📄 MUI Columns
+const customerColumns: GridColDef[] = useMemo(() => [
+{ field: "customerId", headerName: "ID", flex: 1 },
+  { field: "name", headerName: "Name", flex: 1 },
+  { field: "phone", headerName: "Phone", flex: 1 },
+  { field: "createdAt", headerName: "Created At", flex: 1, type:"string" },
+  { field: "balance", headerName: "Balance", flex: 1 },
+  { field: "status", headerName: "Status", flex: 1 },
+  {
+    field: "action",
+    headerName: "Action",
+    flex: 1,
+    renderCell: (params) => (
+      <div className="space-x-2">
+        <button
+          onClick={() => handleEditCustomer(params.id as number)}
+          className="text-blue-600 hover:underline"
+        >
+          Edit
+        </button>
+        <button
+          onClick={() => handleDeleteCustomer(params.id as number)}
+          className="text-red-600 hover:underline"
+        >
+          Delete
+        </button>
+      </div>
+    ),
+  },
+], [handleEditCustomer, handleDeleteCustomer]);
+
+
+
+
+  // ➕ Add or 🔄 Edit Customer
+ const handleAddCustomer = async (data: Partial<Customer>) => {
+  const isEditing = editingCustomer !== null;
+  const phone = data.phone || "";
+
   const input = {
     name: data.name || "Unnamed",
     phone: data.phone || "0300-0000000",
@@ -125,174 +150,240 @@ const handleAddCustomer = async (data: Partial<Customer>) => {
 
   try {
     if (isEditing) {
-      // 🔄 Update logic
       const result = await updateCustomerMutation({
-        variables: {
-          phone: phone,
-          updateCustomerInput: input,
-        },
+        variables: { phone, updateCustomerInput: input },
       });
       const updatedCustomer = result.data?.updateCustomer;
       if (updatedCustomer) {
-        const updatedList = [...customers];
-        updatedList[editingIndex!] = updatedCustomer;
-        setCustomers(updatedList);
-        console.log("✅ Customer updated from backend:", updatedCustomer);
+        setCustomers((prev) =>
+          prev.map((c) =>
+            c.customerId === editingCustomer.customerId ? updatedCustomer : c
+          )
+        );
       }
     } else {
-      // ➕ Create logic
       const result = await createCustomerMutation({
-        variables: {
-          createCustomerInput: input,
-        },
+        variables: { createCustomerInput: input },
       });
       const createdCustomer = result.data?.createCustomer;
       if (createdCustomer) {
-        setCustomers([...customers, createdCustomer]);
-        console.log("✅ Created from backend:", createdCustomer);
+        setCustomers((prev) => [...prev, createdCustomer]);
       }
     }
 
+    await refetch();
     setIsModalOpen(false);
-    setEditingIndex(null);
+    setEditingCustomer(null);
   } catch (err) {
-    console.error("Error saving customer:", err);
-  }
-};
-
-  // Deleting customer 
-const handleDeleteCustomer = async (index: number) => {
-  const customerToDelete = customers[index];
-  if (!customerToDelete) return;
-
-  try {
-    await deleteCustomerMutation({
-      variables: {
-        phone: customerToDelete.phone,
-      },
-    });
-
-    // Remove from local state
-    const filtered = customers.filter((_, i) => i !== index);
-    setCustomers(filtered);
-    console.log("🗑️ Customer deleted successfully");
-  } catch (err) {
-    console.error("❌ Error deleting customer:", err);
+    console.error("❌ Error saving customer:", err);
   }
 };
 
 
 
 
- 
-
-
-
-  // Open modal for editing with prefilled data
-  const handleEditCustomer = (index: number) => {
-    setEditingIndex(index);
-    setIsModalOpen(true);
-  };
 
 
 
 
-  // Filter customers based on activeFilter and searchTerm
-  // const filteredCustomers = customers
-  //   .filter((cust) => {
-  //     if (activeFilter === "Pending Payments") return cust.status === "Pending";
-  //     if (activeFilter === "Received Payments") return cust.status === "Received";
-  //     return true; // All or unknown filter show all
-  //   })
-  //   .filter((cust) =>
-  //     cust.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-  //     cust.phone.toLowerCase().includes(searchTerm.toLowerCase())
-  //   );
-
-
-
-
-  // Mui ka hy yeh, customer column create karny kylia, ar esko party page mi pass kar rhy hain
-  const customerColumns: GridColDef[] = [
-    { field: "name", headerName: "Name", flex: 1 },
-    { field: "phone", headerName: "Phone", flex: 1 },
-    { field: "createdAt", headerName: "Created At", flex: 1 },
-    { field: "balance", headerName: "Balance", flex: 1 },
-    { field: "status", headerName: "Status", flex: 1 },
-    {
-      field: "action",
-      headerName: "Action",
-      flex: 1,
-      renderCell: (params) => (
-        <div className="space-x-2">
-          <button 
-            className="text-blue-600 hover:underline"
-            onClick={() => handleEditCustomer(params.id as number)}
-          >
-            Edit
-          </button>
-          <button 
-            className="text-red-600 hover:underline"
-            onClick={() => handleDeleteCustomer(params.id as number)}
-          >
-            Delete
-          </button>
-        </div>
-      ),
+  
+  // ✅ Main customer fetch query - server side pagination kar rahy hain ( ar with smart loading using networkstatus)
+  const { data,  refetch, networkStatus } = useQuery(GET_CUSTOMERS_PAGINATED, {
+    variables: {
+      page: paginationModel.page + 1,
+      limit: paginationModel.pageSize,
+      search: debouncedSearch || undefined,
+      status: activeFilter !== "All" ? activeFilter : undefined,
+        startDate: startDate || undefined,
+  endDate: endDate || undefined,
     },
-  ];
+    notifyOnNetworkStatusChange: true, // ✅ Enables `networkStatus` change detection
+  });
 
-  // Mui ka hy yeh, customer rows create karny kylia, ar esko partypage mi pass kar rhy hain
-const customerRows = customers.map((cust, index) => ({
-  id: index, // Use stable unique ID
-  name: cust.name,
-  phone: cust.phone,
-  createdAt: cust.createdAt,
-  balance: cust.balance,
-  status: cust.status,
-}));
+
+
+
+  // ✅ update customer list when data comes from backend
+  useEffect(() => {
+    if (data?.customersPaginated?.data) {
+      setCustomers(data.customersPaginated.data);
+    }
+  }, [data]);
+
+
+
+
+
+
+
+
+
+
+  // 🔄 Filter tabs logic (Pending / Received)
+  // useEffect(() => {
+  //   refetch({
+  //     page: paginationModel.page + 1,
+  //     limit: paginationModel.pageSize,
+  //     search: debouncedSearch || undefined,
+  //     status: activeFilter === "Pending Payments"
+  //       ? "Pending"
+  //       : activeFilter === "Received Payments"
+  //       ? "Received"
+  //       : undefined,
+  //   });
+  // }, [debouncedSearch, activeFilter, paginationModel.page, paginationModel.pageSize, refetch]);
+
+
+
+
+// throttle kr rhy hain - mui ky column par jab user filter kry to type krny ky 4s bd filter work kry
+const throttledRefetch = useMemo(() => {
+  return throttle((vars: RefetchVars) => {
+    refetch(vars);
+  }, 4000);
+}, [refetch]);
+
+
+
+  // 🔍 Column-wise filtering
+// useEffect(() => {
+//   const filters = filterModel.items.reduce((acc, item) => {
+//     if (item.value) acc.push(item.value.toString());
+//     return acc;
+//   }, [] as string[]);
+
+//   const combinedSearch = filters.join(" ");
+
+//   throttledRefetch({
+//     page: paginationModel.page + 1,
+//     limit: paginationModel.pageSize,
+//     search: combinedSearch || undefined,
+//   });
+// }, [filterModel, paginationModel, throttledRefetch]);
+//   // ❌ Error
+//   if (error) return <p>Error loading customers: {error.message}</p>;
+
+useEffect(() => {
+  const columnFilters = filterModel.items.reduce((acc, item) => {
+    if (item.value) acc.push(item.value.toString());
+    return acc;
+  }, [] as string[]);
+
+  const combinedColumnSearch = columnFilters.join(" ");
+  const fullSearch = [debouncedSearch, combinedColumnSearch]
+    .filter(Boolean)
+    .join(" ");
+
+  throttledRefetch({
+    page: paginationModel.page + 1,
+    limit: paginationModel.pageSize,
+    search: fullSearch || undefined,
+    
+    status: activeFilter === "Pending Payments"
+      ? "Pending"
+      : activeFilter === "Received Payments"
+      ? "Received"
+      : undefined,
+          startDate: startDate || undefined,
+    endDate: endDate || undefined,
+      
+  });
+}, [debouncedSearch, filterModel, activeFilter, paginationModel, throttledRefetch, startDate, endDate]);
+
+
+
+
+  
+  // ⏳ Only show loader if initial load (not on debounce or pagination)
+if (networkStatus === NetworkStatus.loading && !data) {
+  return (
+    <div style={{ padding: 16 }}>
+      <Skeleton variant="rectangular" height={40} style={{ marginBottom: 8 }} />
+      <Skeleton variant="rectangular" height={40} style={{ marginBottom: 8 }} />
+      <Skeleton variant="rectangular" height={40} style={{ marginBottom: 8 }} />
+      <Skeleton variant="rectangular" height={40} style={{ marginBottom: 8 }} />
+      <Skeleton variant="rectangular" height={40} style={{ marginBottom: 8 }} />
+    </div>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
   return (
     <>
-
-
-
-
-      {/* popup component hy, edr bi reuse kr rkha hy esko, ar mulitple inputs create kr rha hy jitni customers.tsx ko need hain */}
-      <AddItemModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setEditingIndex(null);
-        }}
-        onSubmit={handleAddCustomer}
-        title={editingIndex !== null ? "Edit Customer" : "Add New Customer"}
-        defaultValues={
-          editingIndex !== null
-            ? {
-                name: customers[editingIndex]?.name || "",
-                phone: customers[editingIndex]?.phone || "",
-                balance: customers[editingIndex]?.balance || "",
-                status: customers[editingIndex]?.status || "",
-              }
-            : {}
+      {/* 🧾 Modal for Add/Edit */}
+   <AddItemModal
+  key={editingCustomer?.customerId || "add"}
+  isOpen={isModalOpen}
+  onClose={() => {
+    setIsModalOpen(false);
+    setEditingCustomer(null);
+  }}
+  onSubmit={handleAddCustomer}
+  title={editingCustomer ? "Edit Customer" : "Add New Customer"}
+  defaultValues={
+    editingCustomer
+      ? {
+          name: editingCustomer.name,
+          phone: editingCustomer.phone,
+          balance: editingCustomer.balance,
+          status: editingCustomer.status,
         }
-
-        // these are popup input fields 
-        fields={[
-          { name: "name", label: "Customer Name", type: "text" },
-          { name: "phone", label: "Phone", type: "tel" },
-          { name: "balance", label: "Balance", type: "number " },
-          {
-            name: "status",
-            label: "Status",
-            options: ["Received", "Pending"], // yeh input field with dropdown hy
-          },
-        ]}
-      />
-
-
+      : {}
+  }
+  fields={[
+    { name: "name", label: "Customer Name", type: "text" },
+    { name: "phone", label: "Phone", type: "tel" },
+    { name: "balance", label: "Balance", type: "number" },
+    {
+      name: "status",
+      label: "Status",
+      options: ["Received", "Pending"],
+    },
+  ]}
+/>
 
 
 
@@ -300,54 +391,67 @@ const customerRows = customers.map((cust, index) => ({
 
 
 
-      {/* partypage reuseability kylia sary project ky pages mi use kia hy miny, edr mui ki table as a prop bhj rha hy ar bhe bhot kuch as a prop hi jara hy sara nichy  */}
+
+
+
+
+
+
+
+      {/* 📦 Party Page Reusable Wrapper */}
       <PartyPage
         title="Customers"
-
         breadcrumbs={["Dashboard", "Parties", "Customers"]}
-
         buttons={[
           { label: "+ Add New Customer", variant: "primary", onClick: () => setIsModalOpen(true) },
           { label: "Import Customer", variant: "secondary" },
         ]}
-
         filters={["All", "Pending Payments", "Received Payments"]}
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        activeFilter={activeFilter}
+        onFilterChange={setActiveFilter}
 
-        searchTerm={searchTerm}                   // 2. Pass search term to PartyPage
-        onSearchChange={setSearchTerm}            // 3. Pass handler to update search term
-        activeFilter={activeFilter}                // 4. Pass active filter state
-        onFilterChange={setActiveFilter}           // 5. Pass handler to update filter
+
+        // code for date ranges
+          startDate={startDate}
+          endDate={endDate}
+          onStartDateChange={setStartDate}
+          onEndDateChange={setEndDate}
+          onClearDateRange={() => {
+             setStartDate("");
+             setEndDate("");
+          }}
 
 
+  
         customTable={
           <div style={{ width: "100%" }}>
-            <DataGrid
-              rows={customerRows}
-              columns={customerColumns}
-              paginationModel={paginationModel}
-              paginationMode="server" // ✅ enable server-side pagination
-              onPaginationModelChange={(newModel) => {
-                setPaginationModel(newModel);
-                refetch({
-                  page: newModel.page + 1,
-                  limit: newModel.pageSize,
-                  search: searchTerm || undefined,
-                  status: activeFilter === "All" ? undefined : activeFilter,
-                });
-              }}
-              rowCount={data?.customersPaginated?.total || 0} // ✅ total from backend
-              pageSizeOptions={[10, 20, 50]}
-  //                sortingMode="server"
-  // sortModel={sortModel}
-  // onSortModelChange={handleSortModelChange}
-    filterModel={filterModel}
- onFilterModelChange={(model) => setFilterModel(model)}
-               checkboxSelection
-              disableRowSelectionOnClick
-              autoHeight
-            />
+          <DataGrid
+  rows={customerRows}
+  columns={customerColumns}
+  getRowId={(row) => row.customerId || `${row.phone}-${row.createdAt}`}
+  paginationModel={paginationModel}
+  paginationMode="server"
+  onPaginationModelChange={(newModel) => {
+    setPaginationModel(newModel);
+    throttledRefetch({
+      page: newModel.page + 1,
+      limit: newModel.pageSize,
+      search: debouncedSearch || undefined,
+      status: activeFilter !== "All" ? activeFilter : undefined,
+    });
+  }}
+  rowCount={data?.customersPaginated?.total || 0}
+  pageSizeOptions={[10, 20, 50]}
+  filterModel={filterModel}
+  onFilterModelChange={(model) => setFilterModel(model)}
+  checkboxSelection
+  disableRowSelectionOnClick
+  autoHeight
+  loading={networkStatus !== NetworkStatus.ready}
+/>
 
-            
           </div>
         }
       />
