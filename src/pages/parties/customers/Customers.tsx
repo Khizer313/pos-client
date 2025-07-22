@@ -18,7 +18,13 @@ import FallbackLoader from "../../../components/FallbackLoader";
 const AddItemModal = lazy(() => import("../../../components/AddItemModel"));
 const PartyPage = lazy(() => import("../../PartyPage"));
 
-
+import {
+  addCustomersToDexie,
+  updateCustomerInDexie,
+  clearOldCustomers,
+  getCustomersFromDexie,
+  deleteCustomerFromDexie,
+} from "../../../hooks/useCustomerDexie"; 
 
 
 
@@ -82,8 +88,6 @@ const [pageAccessLog, setPageAccessLog] = useState<number[]>([]);
   // ➕ Add or 🔄 Edit Customer
 const handleAddCustomer = async (data: Partial<Customer>) => {
   const isEditing = editingCustomer !== null;
-  const phone = data.phone || "";
-
   const input = {
     name: data.name || "Unnamed",
     phone: data.phone || "0300-0000000",
@@ -92,45 +96,61 @@ const handleAddCustomer = async (data: Partial<Customer>) => {
   };
 
   try {
-    if (isEditing) {
+    if (isEditing && editingCustomer?.customerId) {
       const result = await updateCustomerMutation({
-        variables: { phone, updateCustomerInput: input },
+        variables: {
+          customerId: editingCustomer.customerId,
+          updateCustomerInput: input,
+        },
       });
-      const updatedCustomer = result.data?.updateCustomer;
 
+      const updatedCustomer = result.data?.updateCustomer;
       if (updatedCustomer) {
+        await updateCustomerInDexie(updatedCustomer);
+        await clearOldCustomers(5000);
+
         setCustomerPages((prev) => {
           const newMap = new Map(prev);
           const pageData = newMap.get(paginationModel.page) || [];
-
           const updatedPage = pageData.map((c) =>
             c.customerId === editingCustomer.customerId ? updatedCustomer : c
           );
-
           newMap.set(paginationModel.page, updatedPage);
           return newMap;
         });
+
+        toast.success("✅ Customer updated successfully!");
       }
     } else {
       const result = await createCustomerMutation({
         variables: { createCustomerInput: input },
       });
-      const createdCustomer = result.data?.createCustomer;
 
-      if (createdCustomer) {
+      const createdCustomer = result.data?.createCustomer;
+      if (createdCustomer && createdCustomer.customerId !== undefined) {
+        await addCustomersToDexie([createdCustomer]);
+        await clearOldCustomers(5000);
+
         setCustomerPages((prev) => {
           const newMap = new Map(prev);
-          const pageData = newMap.get(paginationModel.page) || [];
-          const updatedPage = [...pageData, createdCustomer];
-          newMap.set(paginationModel.page, updatedPage);
+          const firstPageData = newMap.get(0) || [];
+          const updatedFirstPage = [createdCustomer, ...firstPageData].slice(0, 10); // Keep 10 per page
+          newMap.set(0, updatedFirstPage);
           return newMap;
         });
+
+        // ✅ Scroll to page 0 to show new customer
+        setPaginationModel((prev) => ({ ...prev, page: 0 }));
+
+        toast.success("✅ Customer added successfully!");
       }
     }
 
-    await refetch(); // optional: you can remove this if you want to rely purely on local update
-    setIsModalOpen(false);
-    setEditingCustomer(null);
+    // ✅ Smoothly close modal after short delay
+    setTimeout(() => {
+      setIsModalOpen(false);
+      setEditingCustomer(null);
+    }, 300);
   } catch (err) {
     toast.error(
       <span>
@@ -140,6 +160,9 @@ const handleAddCustomer = async (data: Partial<Customer>) => {
     );
   }
 };
+
+
+
 
 
 
@@ -157,17 +180,13 @@ const handleEditCustomer = useCallback((id: number) => {
 
 
 
+
 // 🗑️ Delete Customer
 const handleDeleteCustomer = useCallback(
   async (customerId: number) => {
-    const pageData = customerPages.get(paginationModel.page) || [];
-    const customerToDelete = pageData.find((c) => c.customerId === customerId);
-    if (!customerToDelete) return;
-
     try {
-      await deleteCustomerMutation({
-        variables: { phone: customerToDelete.phone },
-      });
+      await deleteCustomerMutation({ variables: { customerId } });
+      await deleteCustomerFromDexie (customerId); // Dexie sync
 
       setCustomerPages((prev) => {
         const newMap = new Map(prev);
@@ -181,8 +200,9 @@ const handleDeleteCustomer = useCallback(
       toast.error(`🚫 ${(err as Error).message}`);
     }
   },
-  [customerPages, paginationModel.page, deleteCustomerMutation]
+  [paginationModel.page, deleteCustomerMutation]
 );
+
 
 
 
@@ -191,11 +211,15 @@ const handleDeleteCustomer = useCallback(
 
   // 📊 MUI Rows
 const customerRows = useMemo(() => {
-  return customerPages.get(paginationModel.page)?.map((cust) => ({
+  const pageData = customerPages.get(paginationModel.page);
+  if (!pageData) return [];
+  return pageData.map((cust) => ({
     id: cust.customerId,
     ...cust,
-  })) || [];
+  }));
 }, [customerPages, paginationModel.page]);
+
+
 
 
 
@@ -246,9 +270,14 @@ const customerColumns: GridColDef[] = useMemo(() => [
         startDate: startDate || undefined,
   endDate: endDate || undefined,
     },
-     fetchPolicy: "network-only",
+     fetchPolicy: 'cache-first',
     notifyOnNetworkStatusChange: true, // ✅ Enables `networkStatus` change detection
   });
+
+
+
+
+  
 // Use effect to show toast if query errors out
 useEffect(() => {
   if (error) {
@@ -259,24 +288,40 @@ useEffect(() => {
   
   // ✅ update customer list when data comes from backend
 useEffect(() => {
-  if (data?.customersPaginated?.data) {
-    setCustomerPages((prev) => {
-      const newMap = new Map(prev);
-      newMap.set(paginationModel.page, data.customersPaginated.data);
+  const loadCustomers = async () => {
+    if (data?.customersPaginated?.data) {
+      setCustomerPages((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(paginationModel.page, data.customersPaginated.data);
 
-            // 👇 Memory Cleanup (LRU-style)
-      const activePages = new Set(pageAccessLog);
-      for (const key of newMap.keys()) {
-        if (!activePages.has(key)) {
-          newMap.delete(key);
+        if (pageAccessLog.length > 0) {
+          const activePages = new Set(pageAccessLog);
+          for (const key of newMap.keys()) {
+            if (!activePages.has(key)) {
+              newMap.delete(key);
+            }
+          }
         }
-      }
+        return newMap;
+      });
+    } else if (error) {
+      // Fallback to Dexie
+      const fallbackCustomers = await getCustomersFromDexie();
+      const paged = fallbackCustomers.slice(
+        paginationModel.page * paginationModel.pageSize,
+        (paginationModel.page + 1) * paginationModel.pageSize
+      );
+      setCustomerPages((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(paginationModel.page, paged);
+        return newMap;
+      });
+    }
+  };
 
+  loadCustomers();
+}, [data, error, paginationModel.page, paginationModel.pageSize, pageAccessLog]);
 
-      return newMap;
-    });
-  }
-}, [data, paginationModel.page, pageAccessLog]);
 
 
 
@@ -303,6 +348,12 @@ const throttledRefetch = useMemo(() => {
   }, 4000);
 }, [refetch]);
 
+useEffect(() => {
+  console.log("Page:", paginationModel.page);
+  console.log("customerPages:", customerPages);
+  console.log("customerRows:", customerRows);
+  console.log("Apollo Data:", data);
+}, [paginationModel.page, customerPages, customerRows, data]);
 
 
 
@@ -413,31 +464,32 @@ if (networkStatus === NetworkStatus.loading && !data) {
       <Suspense fallback={<FallbackLoader type="modal" />}>
 
          <AddItemModal
-  key={editingCustomer?.customerId || "add"}
-  isOpen={isModalOpen}
-  onClose={() => {
-    setIsModalOpen(false);
-    setEditingCustomer(null);
-  }}
-  onSubmit={handleAddCustomer}
-  title={editingCustomer ? "Edit Customer" : "Add New Customer"}
-  defaultValues={
-    editingCustomer
-      ? {
-          name: editingCustomer.name,
-          phone: editingCustomer.phone,
-          balance: editingCustomer.balance,
-          status: editingCustomer.status,
-        }
-      : {}
+            key={editingCustomer?.customerId || "add"}
+            isOpen={isModalOpen}
+            onClose={() => {
+               setIsModalOpen(false);
+               setEditingCustomer(null);
+            }}
+            onSubmit={handleAddCustomer}
+            title={editingCustomer ? "Edit Customer" : "Add New Customer"}
+            defaultValues={
+            editingCustomer
+            ? {
+                name: editingCustomer.name,
+                phone: editingCustomer.phone,
+                balance: editingCustomer.balance,
+                status: editingCustomer.status,
+           }
+        : {}
   }
-  fields={[
-    { name: "name", label: "Customer Name", type: "text" },
-    { name: "phone", label: "Phone", type: "tel" },
-    { name: "balance", label: "Balance", type: "number" },
-    {name: "status", label: "Status", options: ["Received", "Pending"] },
+        fields={[
+              { name: "name", label: "Customer Name", type: "text" },
+              { name: "phone", label: "Phone", type: "tel" },
+              { name: "balance", label: "Balance", type: "number" },
+              {name: "status", label: "Status", options: ["Received", "Pending"] },
            ]}
 />
+
      </Suspense>
 
 
@@ -485,7 +537,7 @@ if (networkStatus === NetworkStatus.loading && !data) {
         customTable={
           <div style={{ width: "100%" }}>
           <DataGrid
-              rows={customerRows}
+              rows={customerRows ?? []} 
               columns={customerColumns}
               getRowId={(row) => row.customerId || `${row.phone}-${row.createdAt}`}
               paginationModel={paginationModel}
@@ -517,7 +569,8 @@ if (networkStatus === NetworkStatus.loading && !data) {
               checkboxSelection
               disableRowSelectionOnClick
               autoHeight
-              loading={networkStatus !== NetworkStatus.ready}
+              loading={networkStatus === NetworkStatus.loading && !customerPages.get(paginationModel.page)}
+
      />
  </div>
         }
