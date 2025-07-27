@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useCallback, useTransition } from "react";
-import { DataGrid, type GridColDef, type GridPaginationModel, type GridFilterModel, type GridRenderCellParams } from "@mui/x-data-grid";
+import { useState, useEffect, useMemo, useCallback, useTransition, useRef } from "react";
+import {  type GridColDef, type GridPaginationModel, type GridFilterModel, type GridRenderCellParams } from "@mui/x-data-grid";
 import { useMutation, useQuery, NetworkStatus } from "@apollo/client";
 
 
@@ -10,13 +10,12 @@ import { Skeleton } from "@mui/material";
 import { useDebounce } from "../../../hooks/useDebounce"; // ✅ Custom hook for debouncing
 import { throttle } from "../../../hooks/useThrottle"; // ✅ Add this import
 // import DateRangeFilter from "../../../components/DateRangeFilter";
-import { Toaster, toast } from 'react-hot-toast';
+import { toast } from 'react-hot-toast';
 
 import { lazy, Suspense } from "react";
 import FallbackLoader from "../../../components/FallbackLoader";
 
 const AddItemModal = lazy(() => import("../../../components/AddItemModel"));
-const PartyPage = lazy(() => import("../../PartyPage"));
 
 import {
   addCustomersToDexie,
@@ -27,7 +26,12 @@ import {
 } from "../../../hooks/useCustomerDexie"; 
 
 
+const PartyPage = lazy(() => import("../../PartyPage"));
+const DataGrid = lazy(() => import("@mui/x-data-grid/DataGrid").then(m => ({ default: m.DataGrid })));
 
+const Toaster = lazy(() =>
+  import("react-hot-toast").then((module) => ({ default: module.Toaster }))
+);
 
 
 type Customer = {
@@ -50,18 +54,18 @@ type RefetchVars = {
 
 
 const Customers = () => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [customerPages, setCustomerPages] = useState<Map<number, Customer[]>>(new Map());
-  const [searchTerm, setSearchTerm] = useState(""); // 🔍 User-typed search term
-const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [customerPages, setCustomerPages] = useState<Map<number, Customer[]>>(new Map());// latest 10 pages paginated cache saved using Map
+  const [searchTerm, setSearchTerm] = useState(""); // 🔍 User-typed search term - simple input based search of app 
+  const [filterModel, setFilterModel] = useState<GridFilterModel>({ items: [] }); // mui filter based search
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null); // editing specific row of customer
+  const [isModalOpen, setIsModalOpen] = useState(false);// used for opening/closing additemmodel popup for editing/adding customers rows
   const [activeFilter, setActiveFilter] = useState("All");
 
   const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
     page: 0,
     pageSize: 10,
-  });
+  }); // mui table pagination
 
-  const [filterModel, setFilterModel] = useState<GridFilterModel>({ items: [] });
 
   // ✅ Debounced searchTerm (delay firing queries)
   const debouncedSearch = useDebounce(searchTerm, 400);
@@ -77,7 +81,10 @@ const [endDate, setEndDate] = useState<string>("");
 
 const [isPending, startTransition] = useTransition();
 
-const [pageAccessLog, setPageAccessLog] = useState<number[]>([]);
+const [pageAccessLog, setPageAccessLog] = useState<number[]>([]); // Logs recently visited pages to implement LRU-style memory cache (only keep last 10 pages).
+
+// for toast - into handleAddCustomer function
+const lastRefetchVars = useRef<RefetchVars | null>(null);
 
 
 
@@ -136,6 +143,9 @@ const handleAddCustomer = async (data: Partial<Customer>) => {
           const firstPageData = newMap.get(0) || [];
           const updatedFirstPage = [createdCustomer, ...firstPageData].slice(0, 10); // Keep 10 per page
           newMap.set(0, updatedFirstPage);
+          setCustomerPages(new Map()); // Optional: clear all pages to prevent stale data
+          setPaginationModel({ page: 0, pageSize: 10 }); // Optional: reset to first page
+
           return newMap;
         });
 
@@ -153,11 +163,22 @@ const handleAddCustomer = async (data: Partial<Customer>) => {
     }, 300);
   } catch (err) {
     toast.error(
-      <span>
-        🚫 {(err as Error).message}
-        <button onClick={() => refetch()}>Retry</button>
-      </span>
-    );
+  <span>
+    🚫 {(err as Error).message}
+    <button
+      onClick={() => {
+        if (lastRefetchVars.current) {
+          refetch(lastRefetchVars.current);
+        }
+      }}
+    >
+      Retry
+    </button>
+    <a onClick={() => refetch()} style={{ cursor: "pointer", textDecoration: "underline" }}>Retry</a>
+
+  </span>
+);
+
   }
 };
 
@@ -167,7 +188,7 @@ const handleAddCustomer = async (data: Partial<Customer>) => {
 
 
 
-  // ✏️ Edit customer
+  // ✏️ Edit customer - Opens modal for editing by looking up customer in customerPages
 const handleEditCustomer = useCallback((id: number) => {
   const pageData = customerPages.get(paginationModel.page) || [];
   const customer = pageData.find((c) => c.customerId === id);
@@ -182,11 +203,12 @@ const handleEditCustomer = useCallback((id: number) => {
 
 
 // 🗑️ Delete Customer
+// 🗑️ Delete Customer
 const handleDeleteCustomer = useCallback(
   async (customerId: number) => {
     try {
       await deleteCustomerMutation({ variables: { customerId } });
-      await deleteCustomerFromDexie (customerId); // Dexie sync
+      await deleteCustomerFromDexie(customerId); // Dexie sync
 
       setCustomerPages((prev) => {
         const newMap = new Map(prev);
@@ -196,12 +218,15 @@ const handleDeleteCustomer = useCallback(
         newMap.set(paginationModel.page, updatedPage);
         return newMap;
       });
+
+      toast.success("🗑️ Customer deleted successfully!");
     } catch (err) {
       toast.error(`🚫 ${(err as Error).message}`);
     }
   },
   [paginationModel.page, deleteCustomerMutation]
 );
+
 
 
 
@@ -237,15 +262,34 @@ const renderActions = useCallback((params: GridRenderCellParams) => (
 
   // 📄 MUI Columns
 const customerColumns: GridColDef[] = useMemo(() => [
-{ field: "customerId", headerName: "ID", flex: 1 },
+  { field: "customerId", headerName: "ID", flex: 1 },
   { field: "name", headerName: "Name", flex: 1 },
   { field: "phone", headerName: "Phone", flex: 1 },
-  { field: "createdAt", headerName: "Created At", flex: 1, type:"string" },
+  { 
+    field: "createdAt", 
+    headerName: "Created At", 
+    flex: 1, 
+    type: "string",
+    renderCell: (params) => {
+      const date = new Date(params.value);
+      // Format Pakistan timezone, yyyy-mm-dd HH:mm
+      const options: Intl.DateTimeFormatOptions = { 
+        year: 'numeric', 
+        month: '2-digit', 
+        day: '2-digit', 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Asia/Karachi'
+      };
+      return date.toLocaleString('en-GB', options).replace(',', '');
+    }
+  },
   { field: "balance", headerName: "Balance", flex: 1 },
   { field: "status", headerName: "Status", flex: 1 },
- { field: "action", headerName: "Action", flex: 1, renderCell: renderActions }
-
+  { field: "action", headerName: "Action", flex: 1, renderCell: renderActions }
 ], [renderActions]);
+
 
 
 
@@ -294,19 +338,19 @@ useEffect(() => {
         const newMap = new Map(prev);
         newMap.set(paginationModel.page, data.customersPaginated.data);
 
-        if (pageAccessLog.length > 0) {
-          const activePages = new Set(pageAccessLog);
+        const activePages = new Set([...pageAccessLog, paginationModel.page]); // ✅ Add current page to log
           for (const key of newMap.keys()) {
-            if (!activePages.has(key)) {
-              newMap.delete(key);
-            }
+          if (!activePages.has(key)) {
+               newMap.delete(key);
+           }
           }
-        }
+
         return newMap;
       });
-    } else if (error) {
-      // Fallback to Dexie
-      const fallbackCustomers = await getCustomersFromDexie();
+    } else if (!data && error ) {
+      //FallBack to Dexie
+  const fallbackCustomers = await getCustomersFromDexie();
+
       const paged = fallbackCustomers.slice(
         paginationModel.page * paginationModel.pageSize,
         (paginationModel.page + 1) * paginationModel.pageSize
@@ -333,8 +377,20 @@ useEffect(() => {
 
 
 
+//  Store latest refetch variables before throttledRefetch() 
+  lastRefetchVars.current = {
+  page: paginationModel.page + 1,
+  limit: paginationModel.pageSize,
+  search: debouncedSearch || undefined,
+  status: activeFilter === "Pending Payments"
+    ? "Pending"
+    : activeFilter === "Received Payments"
+    ? "Received"
+    : undefined,
+  startDate: startDate || undefined,
+  endDate: endDate || undefined,
+};
 
-  
 
 // throttle kr rhy hain - mui ky column par jab user filter kry to type krny ky 4s bd filter work kry
 const throttledRefetch = useMemo(() => {
@@ -345,15 +401,16 @@ const throttledRefetch = useMemo(() => {
       const message = (err as Error).message || "An unknown error occurred.";
       toast.error(`🚫 ${message}`);
     }
-  }, 4000);
+  }, 1000);
 }, [refetch]);
 
 useEffect(() => {
-  console.log("Page:", paginationModel.page);
-  console.log("customerPages:", customerPages);
-  console.log("customerRows:", customerRows);
-  console.log("Apollo Data:", data);
+  console.log("Page:", paginationModel.page);                     // 🔎 Current page number
+  console.log("customerPages:", customerPages);                   // 🧠 Full cached map
+  console.log("customerRows:", customerRows);                     // 👀 Current rows shown in UI
+  console.log("Apollo Data:", data);                              // 🔄 Fresh data from API
 }, [paginationModel.page, customerPages, customerRows, data]);
+
 
 
 
@@ -461,7 +518,9 @@ if (networkStatus === NetworkStatus.loading && !data) {
 
 
       {/* 🧾 Modal for Add/Edit */}
-      <Suspense fallback={<FallbackLoader type="modal" />}>
+      {isModalOpen && (
+
+        <Suspense fallback={<FallbackLoader type="modal" />}>
 
          <AddItemModal
             key={editingCustomer?.customerId || "add"}
@@ -475,9 +534,9 @@ if (networkStatus === NetworkStatus.loading && !data) {
             defaultValues={
             editingCustomer
             ? {
-                name: editingCustomer.name,
-                phone: editingCustomer.phone,
-                balance: editingCustomer.balance,
+              name: editingCustomer.name,
+              phone: editingCustomer.phone,
+              balance: editingCustomer.balance,
                 status: editingCustomer.status,
            }
         : {}
@@ -487,10 +546,11 @@ if (networkStatus === NetworkStatus.loading && !data) {
               { name: "phone", label: "Phone", type: "tel" },
               { name: "balance", label: "Balance", type: "number" },
               {name: "status", label: "Status", options: ["Received", "Pending"] },
-           ]}
+            ]}
 />
 
      </Suspense>
+          )}
 
 
 
@@ -535,11 +595,12 @@ if (networkStatus === NetworkStatus.loading && !data) {
 
         
         customTable={
+          
           <div style={{ width: "100%" }}>
           <DataGrid
               rows={customerRows ?? []} 
               columns={customerColumns}
-              getRowId={(row) => row.customerId || `${row.phone}-${row.createdAt}`}
+                getRowId={(row) => row.customerId ?? `${row.phone}-${row.createdAt}`} // ✅ FIXED
               paginationModel={paginationModel}
               paginationMode="server"
               onPaginationModelChange={(newModel) => {
@@ -552,7 +613,8 @@ if (networkStatus === NetworkStatus.loading && !data) {
                      newLog.push(newModel.page);
                     return newLog.length > 10 ? newLog.slice(-10) : newLog; // keep last 10 pages
                  });
-
+                 
+                 // Server-side pagination: triggers refetch() using throttledRefetch.
                  throttledRefetch({
                      page: newModel.page + 1,
                      limit: newModel.pageSize,
