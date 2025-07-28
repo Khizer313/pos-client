@@ -26,5 +26,5 @@
     "noImplicitReturns": true,
     "noImplicitThis": true
   },
-  "include": ["src"]
+  "include": ["src", "src/pages/parties/customers/useCustomerQueryEffects/.ts"]
 }

@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useMemo, useCallback, useTransition, useRef } from "react";
 import {  type GridColDef, type GridPaginationModel, type GridFilterModel, type GridRenderCellParams } from "@mui/x-data-grid";
 import { useMutation, useQuery, NetworkStatus } from "@apollo/client";
@@ -81,7 +82,6 @@ const [endDate, setEndDate] = useState<string>("");
 
 const [isPending, startTransition] = useTransition();
 
-const [pageAccessLog, setPageAccessLog] = useState<number[]>([]); // Logs recently visited pages to implement LRU-style memory cache (only keep last 10 pages).
 
 // for toast - into handleAddCustomer function
 const lastRefetchVars = useRef<RefetchVars | null>(null);
@@ -139,15 +139,14 @@ const handleAddCustomer = async (data: Partial<Customer>) => {
         await clearOldCustomers(5000);
 
         setCustomerPages((prev) => {
-          const newMap = new Map(prev);
-          const firstPageData = newMap.get(0) || [];
-          const updatedFirstPage = [createdCustomer, ...firstPageData].slice(0, 10); // Keep 10 per page
-          newMap.set(0, updatedFirstPage);
-          setCustomerPages(new Map()); // Optional: clear all pages to prevent stale data
-          setPaginationModel({ page: 0, pageSize: 10 }); // Optional: reset to first page
+  const newMap = new Map(prev);
+  const firstPageData = newMap.get(0) || [];
+  const updatedFirstPage = [createdCustomer, ...firstPageData].slice(0, 10);
+  newMap.set(0, updatedFirstPage);
+  return newMap;
+});
+setPaginationModel({ page: 0, pageSize: 10 });
 
-          return newMap;
-        });
 
         // ✅ Scroll to page 0 to show new customer
         setPaginationModel((prev) => ({ ...prev, page: 0 }));
@@ -334,23 +333,30 @@ useEffect(() => {
 useEffect(() => {
   const loadCustomers = async () => {
     if (data?.customersPaginated?.data) {
+      console.log("⏬ Loading page", paginationModel.page, "from API");
+
       setCustomerPages((prev) => {
-        const newMap = new Map(prev);
-        newMap.set(paginationModel.page, data.customersPaginated.data);
+  const newMap = new Map(prev);
 
-        const activePages = new Set([...pageAccessLog, paginationModel.page]); // ✅ Add current page to log
-          for (const key of newMap.keys()) {
-          if (!activePages.has(key)) {
-               newMap.delete(key);
-           }
-          }
+  // only set if current page is not already cached or being updated
+  newMap.set(paginationModel.page, data.customersPaginated.data);
 
-        return newMap;
-      });
-    } else if (!data && error ) {
-      //FallBack to Dexie
-  const fallbackCustomers = await getCustomersFromDexie();
 
+  // Only keep 10 recent pages
+  const keys = Array.from(newMap.keys()).sort((a, b) => a - b);
+  if (keys.length > 10) {
+    for (const key of keys.slice(0, keys.length - 10)) {
+      newMap.delete(key);
+    }
+  }
+
+  return newMap;
+});
+
+    } else if (!data && error) {
+      console.log("🧱 Fallback to Dexie for page", paginationModel.page);
+
+      const fallbackCustomers = await getCustomersFromDexie();
       const paged = fallbackCustomers.slice(
         paginationModel.page * paginationModel.pageSize,
         (paginationModel.page + 1) * paginationModel.pageSize
@@ -364,7 +370,7 @@ useEffect(() => {
   };
 
   loadCustomers();
-}, [data, error, paginationModel.page, paginationModel.pageSize, pageAccessLog]);
+}, [data, error, paginationModel.page, paginationModel.pageSize]);
 
 
 
@@ -427,20 +433,20 @@ useEffect(() => {
     .join(" ");
 
   startTransition(() => {
-    throttledRefetch({
-      page: paginationModel.page + 1,
-      limit: paginationModel.pageSize,
-      search: fullSearch || undefined,
-      status:
-        activeFilter === "Pending Payments"
-          ? "Pending"
-          : activeFilter === "Received Payments"
-          ? "Received"
-          : undefined,
-      startDate: startDate || undefined,
-      endDate: endDate || undefined,
-    });
+  throttledRefetch({
+    page: paginationModel.page + 1,
+    limit: paginationModel.pageSize, // ✅ This was missing!
+    search: fullSearch || undefined,
+    status: activeFilter === "Pending Payments"
+      ? "Pending"
+      : activeFilter === "Received Payments"
+      ? "Received"
+      : undefined,
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
   });
+});
+
 }, [debouncedSearch, filterModel, activeFilter, paginationModel, throttledRefetch, startDate, endDate]);
 
 
@@ -603,26 +609,13 @@ if (networkStatus === NetworkStatus.loading && !data) {
                 getRowId={(row) => row.customerId ?? `${row.phone}-${row.createdAt}`} // ✅ FIXED
               paginationModel={paginationModel}
               paginationMode="server"
-              onPaginationModelChange={(newModel) => {
-                 startTransition(() => {
-                 setPaginationModel(newModel);
+             onPaginationModelChange={(newModel) => {
+  startTransition(() => {
+    setPaginationModel(newModel); // that's it.
+  });
+}}
 
-                     // 👇 LRU log update
-                 setPageAccessLog((prevLog) => {
-                     const newLog = prevLog.filter(p => p !== newModel.page); // remove duplicate
-                     newLog.push(newModel.page);
-                    return newLog.length > 10 ? newLog.slice(-10) : newLog; // keep last 10 pages
-                 });
-                 
-                 // Server-side pagination: triggers refetch() using throttledRefetch.
-                 throttledRefetch({
-                     page: newModel.page + 1,
-                     limit: newModel.pageSize,
-                     search: debouncedSearch || undefined,
-                     status: activeFilter !== "All" ? activeFilter : undefined,
-              });
-             });
-          }}
+
 
               rowCount={data?.customersPaginated?.total || 0}
               pageSizeOptions={[10, 20, 50]}
