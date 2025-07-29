@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Home, LayoutDashboard, ChevronDown, ChevronUp } from 'lucide-react';
-import { Scrollbar } from 'react-scrollbars-custom';
 import { Link } from 'react-router-dom';
 
 // >>>>>>>>>>>> Types <<<<<<<<<<<<<
@@ -60,7 +59,6 @@ const SideMenu = ({ menuOpen }: Props) => {
       </Link>
 
       {/* >>>>>>>>>>>>>> Scrollable content using Scrollbar, with it's own 2  childs(dashboard button and dropdowns) <<<<<<<<<< */}
-      <Scrollbar style={{ flex: 1 }} noScrollX className="scrollbar-container">
 
         {/* Dashbora button under scroll bar */}
         <Link
@@ -103,7 +101,6 @@ const SideMenu = ({ menuOpen }: Props) => {
             </div>
           ))}
         </div>
-      </Scrollbar>
     </div>
   );
 };

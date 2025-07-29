@@ -7,7 +7,7 @@ const Home = () => {
       <h1
         className="
           text-4xl sm:text-5xl md:text-6xl font-extrabold text-blue-400
-          animate-pulse select-none drop-shadow-lg text-center
+           select-none drop-shadow-lg text-center
         "
       >
         Welcome To Ahmed Computers

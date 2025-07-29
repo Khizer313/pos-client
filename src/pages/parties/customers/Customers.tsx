@@ -11,7 +11,9 @@ import { Skeleton } from "@mui/material";
 import { useDebounce } from "../../../hooks/useDebounce"; // ✅ Custom hook for debouncing
 import { throttle } from "../../../hooks/useThrottle"; // ✅ Add this import
 // import DateRangeFilter from "../../../components/DateRangeFilter";
-import { toast } from 'react-hot-toast';
+import { useToast } from "../../../components/use-toast";
+
+
 
 import { lazy, Suspense } from "react";
 import FallbackLoader from "../../../components/FallbackLoader";
@@ -30,9 +32,7 @@ import {
 const PartyPage = lazy(() => import("../../PartyPage"));
 const DataGrid = lazy(() => import("@mui/x-data-grid/DataGrid").then(m => ({ default: m.DataGrid })));
 
-const Toaster = lazy(() =>
-  import("react-hot-toast").then((module) => ({ default: module.Toaster }))
-);
+
 
 
 type Customer = {
@@ -55,6 +55,7 @@ type RefetchVars = {
 
 
 const Customers = () => {
+  const { showToast } = useToast();
   const [customerPages, setCustomerPages] = useState<Map<number, Customer[]>>(new Map());// latest 10 pages paginated cache saved using Map
   const [searchTerm, setSearchTerm] = useState(""); // 🔍 User-typed search term - simple input based search of app 
   const [filterModel, setFilterModel] = useState<GridFilterModel>({ items: [] }); // mui filter based search
@@ -114,7 +115,7 @@ const handleAddCustomer = async (data: Partial<Customer>) => {
       const updatedCustomer = result.data?.updateCustomer;
       if (updatedCustomer) {
         await updateCustomerInDexie(updatedCustomer);
-        await clearOldCustomers(5000);
+        await clearOldCustomers(100);
 
         setCustomerPages((prev) => {
           const newMap = new Map(prev);
@@ -126,7 +127,7 @@ const handleAddCustomer = async (data: Partial<Customer>) => {
           return newMap;
         });
 
-        toast.success("✅ Customer updated successfully!");
+          showToast("✅ Customer updated successfully!", "success");
       }
     } else {
       const result = await createCustomerMutation({
@@ -151,7 +152,8 @@ setPaginationModel({ page: 0, pageSize: 10 });
         // ✅ Scroll to page 0 to show new customer
         setPaginationModel((prev) => ({ ...prev, page: 0 }));
 
-        toast.success("✅ Customer added successfully!");
+        showToast("✅ Customer added successfully!", "success");
+
       }
     }
 
@@ -161,22 +163,8 @@ setPaginationModel({ page: 0, pageSize: 10 });
       setEditingCustomer(null);
     }, 300);
   } catch (err) {
-    toast.error(
-  <span>
-    🚫 {(err as Error).message}
-    <button
-      onClick={() => {
-        if (lastRefetchVars.current) {
-          refetch(lastRefetchVars.current);
-        }
-      }}
-    >
-      Retry
-    </button>
-    <a onClick={() => refetch()} style={{ cursor: "pointer", textDecoration: "underline" }}>Retry</a>
+showToast(`🚫 ${(err as Error).message}`, "error");
 
-  </span>
-);
 
   }
 };
@@ -202,7 +190,6 @@ const handleEditCustomer = useCallback((id: number) => {
 
 
 // 🗑️ Delete Customer
-// 🗑️ Delete Customer
 const handleDeleteCustomer = useCallback(
   async (customerId: number) => {
     try {
@@ -218,12 +205,13 @@ const handleDeleteCustomer = useCallback(
         return newMap;
       });
 
-      toast.success("🗑️ Customer deleted successfully!");
+      showToast("🗑️ Customer deleted successfully!");
     } catch (err) {
-      toast.error(`🚫 ${(err as Error).message}`);
+      showToast(`🚫 ${(err as Error).message}`, "error");
+
     }
   },
-  [paginationModel.page, deleteCustomerMutation]
+  [paginationModel.page, deleteCustomerMutation, showToast]
 );
 
 
@@ -324,9 +312,9 @@ const customerColumns: GridColDef[] = useMemo(() => [
 // Use effect to show toast if query errors out
 useEffect(() => {
   if (error) {
-    toast.error(`🚫 Failed to load customers: ${error.message}`);
+    showToast(`🚫 Failed to load customers: ${error.message}`, "error");
   }
-}, [error]);
+}, [error, showToast]);
 
   
   // ✅ update customer list when data comes from backend
@@ -383,7 +371,7 @@ useEffect(() => {
 
 
 
-//  Store latest refetch variables before throttledRefetch() 
+//  Store latest refetch variables before throttledRefetch() - yani data agr ni show hua to refresh krny pr wohi last query ka data show kary ga takeh user ko query dobara nah chalani pary 
   lastRefetchVars.current = {
   page: paginationModel.page + 1,
   limit: paginationModel.pageSize,
@@ -403,12 +391,13 @@ const throttledRefetch = useMemo(() => {
   return throttle(async (vars: RefetchVars) => {
     try {
       await refetch(vars);
-     } catch (err) {
+    } catch (err) {
       const message = (err as Error).message || "An unknown error occurred.";
-      toast.error(`🚫 ${message}`);
+      showToast(`🚫 ${message}`, "error");
     }
   }, 1000);
-}, [refetch]);
+}, [refetch, showToast]);
+
 
 useEffect(() => {
   console.log("Page:", paginationModel.page);                     // 🔎 Current page number
@@ -435,7 +424,7 @@ useEffect(() => {
   startTransition(() => {
   throttledRefetch({
     page: paginationModel.page + 1,
-    limit: paginationModel.pageSize, // ✅ This was missing!
+    limit: paginationModel.pageSize, 
     search: fullSearch || undefined,
     status: activeFilter === "Pending Payments"
       ? "Pending"
@@ -515,7 +504,6 @@ if (networkStatus === NetworkStatus.loading && !data) {
 
 
 
-      <Toaster position="top-center" />
 
 
 

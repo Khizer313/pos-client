@@ -22,7 +22,7 @@ export const deleteCustomerFromDexie = async (customerId: number) => {
 };
 
 // Clear old data if more than limit
-export const clearOldCustomers = async (max: number = 5000) => {
+export const clearOldCustomers = async (max: number = 100) => {
   const count = await db.customers.count();
   if (count > max) {
     const toDelete = await db.customers
