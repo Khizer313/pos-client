@@ -66,6 +66,7 @@ const Categories = () => {
 
   const categoryColumns: GridColDef[] = [
     { field: "name", headerName: "Category Name", flex: 1 },
+    { field: "name", headerName: "Brand Assigned", flex: 1 },
     { field: "createdAt", headerName: "Created At", flex: 1 },
     { field: "status", headerName: "Status", flex: 1 },
     {
@@ -111,8 +112,8 @@ const Categories = () => {
         }
         fields={[
           { name: "id", label: "Category Id", type: "number" },
-          { name: "name", label: "Brand Name", type: "text" },
-          { name: "name", label: "Brand Name", type: "text" },
+          { name: "name", label: "Category Name", type: "text" },
+          { name: "name", label: "Assign To Brand", type: "text" },
           {
             name: "status",
             label: "Status",
