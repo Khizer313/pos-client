@@ -1,5 +1,5 @@
-import { db } from "../db/dexie";
-import { type Customer } from "../db/dexie";
+import { db } from "../db/customerDexie";
+import { type Customer } from "../db/customerDexie";
 
 // Add multiple customers
 export const addCustomersToDexie = async (customers: Customer[]) => {

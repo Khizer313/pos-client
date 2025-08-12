@@ -4,7 +4,7 @@ import {  type GridColDef, type GridPaginationModel, type GridFilterModel, type 
 import { useMutation, useQuery, NetworkStatus } from "@apollo/client";
 
 
-import { CREATE_CUSTOMER, UPDATE_CUSTOMER, DELETE_CUSTOMER } from "../../../graphql/mutations";
+import { CREATE_CUSTOMER, UPDATE_CUSTOMER, DELETE_CUSTOMER } from "../../../graphql/mutations/customersmutations";
 import { GET_CUSTOMERS_PAGINATED } from "../../../graphql/queries/customers";
 import { Skeleton } from "@mui/material";
 
