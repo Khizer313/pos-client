@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Autocomplete, TextField, Button, Box, Typography } from "@mui/material";
 
+type Option = string | { label: string; value: string };
+
 type Field = {
   name: string;
   label: string;
   type?: string;
-  options?: string[];
+  options?: Option[];
 };
 
 type AddItemModalProps = {
@@ -114,29 +116,53 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
         >
           {fields.map((field, index) =>
             field.options ? (
-              <Autocomplete
-                key={field.name}
-                options={field.options}
-                value={formData[field.name] || ""}
-                onInputChange={(_, newValue) => handleChange(field.name, newValue)}
-                freeSolo
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label={field.label}
-                    variant="outlined"
-                    margin="dense"
-                    fullWidth
-                    inputRef={(el) => (inputRefs.current[index] = el)}
-                    onKeyDown={(e) => handleKeyDown(e, index)}
-                    inputProps={{
-                      ...params.inputProps,
-                      autoComplete: "on",
-                    }}
-                  />
-                )}
-              />
+              Array.isArray(field.options) &&
+              typeof field.options[0] === "object" ? (
+                // 👉 Brand select (object mode)
+                <Autocomplete<{ label: string; value: string }>
+                  key={field.name}
+                  options={field.options as { label: string; value: string }[]}
+                  getOptionLabel={(opt) => opt.label}
+                  value={
+                    (field.options as { label: string; value: string }[]).find(
+                      (o) => o.value === formData[field.name]
+                    ) || null
+                  }
+                  onChange={(_, newValue) =>
+                    handleChange(field.name, newValue ? newValue.value : "")
+                  }
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label={field.label}
+                      variant="outlined"
+                      margin="dense"
+                      fullWidth
+                      inputRef={(el) => (inputRefs.current[index] = el)}
+                    />
+                  )}
+                />
+              ) : (
+                // 👉 Status select (string mode)
+                <Autocomplete<string>
+                  key={field.name}
+                  options={field.options as string[]}
+                  value={formData[field.name] || ""}
+                  onInputChange={(_, newValue) => handleChange(field.name, newValue)}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label={field.label}
+                      variant="outlined"
+                      margin="dense"
+                      fullWidth
+                      inputRef={(el) => (inputRefs.current[index] = el)}
+                    />
+                  )}
+                />
+              )
             ) : (
+              // 👉 Normal text field
               <TextField
                 key={field.name}
                 type={getInputType(field)}
@@ -148,22 +174,6 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
                 fullWidth
                 inputRef={(el) => (inputRefs.current[index] = el)}
                 onKeyDown={(e) => handleKeyDown(e, index)}
-                inputProps={{
-                  autoComplete: "off",
-                  inputMode:
-                    field.name === "phone"
-                      ? "tel"
-                      : field.name === "balance"
-                      ? "numeric"
-                      : undefined,
-                  pattern:
-                    field.name === "phone"
-                      ? "[0-9]*"
-                      : field.name === "balance"
-                      ? "[0-9]*"
-                      : undefined,
-                  min: field.name === "balance" ? 0 : undefined,
-                }}
               />
             )
           )}
