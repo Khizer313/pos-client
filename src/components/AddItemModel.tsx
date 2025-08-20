@@ -54,17 +54,21 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const nextInput = inputRefs.current[index + 1];
-      if (nextInput) {
-        nextInput.focus();
-      } else {
-        document.getElementById("submit-button")?.focus();
-      }
+const handleKeyDown = (
+  e: React.KeyboardEvent<HTMLInputElement | HTMLDivElement>, 
+  index: number
+) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    const nextInput = inputRefs.current[index + 1];
+    if (nextInput) {
+      nextInput.focus();
+    } else {
+      document.getElementById("submit-button")?.focus();
     }
-  };
+  }
+};
+
 
   const getInputType = (field: Field): string => {
     if (field.name === "phone") return "tel";
@@ -139,6 +143,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
                       margin="dense"
                       fullWidth
                       inputRef={(el) => (inputRefs.current[index] = el)}
+                      onKeyDown={(e) => handleKeyDown(e, index)} 
                     />
                   )}
                 />
@@ -157,6 +162,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
                       margin="dense"
                       fullWidth
                       inputRef={(el) => (inputRefs.current[index] = el)}
+                      onKeyDown={(e) => handleKeyDown(e, index)} 
                     />
                   )}
                 />

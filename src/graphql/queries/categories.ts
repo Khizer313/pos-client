@@ -21,6 +21,7 @@ export const GET_CATEGORIES_PAGINATED = gql`
       data {
         categoryId
         name
+        brandAssigned
         status
         createdAt
       }
